@@ -144,7 +144,7 @@ def get_folder_size(path, follow_symlinks=False):
 
 def create_windows_vhdx(source_dir, output_vhdx, size_mb=-1):
     if size_mb <= 0:
-      size_mb = int( (get_folder_size() / 1_000_000.0) * 2.0 ) # 2x larger than the input folder.
+      size_mb = int( (get_folder_size(source_dir) / 1_000_000.0) * 2.0 ) # 2x larger than the input folder.
     if size_mb <= 64:
       size_mb = 64 # if folder empty, bump size to some decent minimum.
 
