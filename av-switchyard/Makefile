@@ -1,8 +1,8 @@
 APP_NAME=av-switchyard
 OUT_DIR=dist
 
-build-all: clean
-	go get . || true
+build-all: clean rsrc.syso
+	-go get .
 
 	mkdir -p $(OUT_DIR)
 
@@ -22,9 +22,11 @@ build-all: clean
 	mkdir -p ../testbed/vm-data/test-artifacts/
 	cp $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe ../testbed/vm-data/test-artifacts/
 
-
+rsrc.syso:
+	uv run ../graphics/render-icons-from-primary.py
 
 clean:
-	rm -rf $(OUT_DIR)
+	-rm -rf $(OUT_DIR)
+	-rm rsrc.syso
 
 
