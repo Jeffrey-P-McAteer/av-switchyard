@@ -14,6 +14,9 @@ import sys
 import shutil
 import pathlib
 import io
+import shutil
+import subprocess
+import shlex
 
 import cairosvg
 import PIL
@@ -21,6 +24,11 @@ import PIL
 def die(msg):
   print(msg)
   sys.exit(1)
+
+def pretty_cmd(*cmd, **kwargs):
+  debug_cmd_txt = shlex.join(cmd)
+  print(f'> {debug_cmd_txt}')
+  subprocess.run(list(cmd), **kwargs)
 
 def render_svg_to_png_bytes(svg_path, size):
     '''Render SVG to PNG bytes at a given size.'''
@@ -57,7 +65,31 @@ def generate_ico(svg_path, out_dir):
 
     return ico_path
 
+def generate_go_rsrc_syso(ico_file, go_src_folder):
+  if shutil.which('rsrc') is None:
+    # Fix attempt 1: Add $HOME/go/bin to $PATH
+    go_bin = pathlib.Path.home() / "go" / "bin"
+    path_parts = os.environ.get('PATH', '').split(os.pathsep)
+    path_parts.append(go_bin)
+    os.environ['PATH'] = os.pathsep.join(str(p) for p in path_parts if p)
+
+  if shutil.which('rsrc') is None:
+    pretty_cmd(
+      'go', 'install', 'github.com/akavel/rsrc@latest',
+    )
+
+  if shutil.which('rsrc') is None:
+    die(f'Please install the binary rsrc!')
+
+  syso_file = os.path.join(go_src_folder, 'rsrc.syso')
+  pretty_cmd(
+    shutil.which('rsrc'), '-ico', ico_file, '-o', syso_file
+  )
+  print(f'Generated {syso_file}')
+
+
 graphics_folder = os.path.dirname(os.path.realpath(__file__))
+go_src_folder = os.path.join(os.path.dirname(graphics_folder), 'av-switchyard')
 
 primary_svg = os.path.join(graphics_folder, 'icon-primary.svg')
 
@@ -74,5 +106,5 @@ if not os.path.exists(primary_svg):
   die(f'Please create the primary icon file, {primary_svg}')
 
 generate_pngs(primary_svg, graphics_build_folder)
-generate_ico(primary_svg, graphics_build_folder)
-
+ico_file = generate_ico(primary_svg, graphics_build_folder)
+generate_go_rsrc_syso(ico_file, go_src_folder)

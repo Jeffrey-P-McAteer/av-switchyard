@@ -4,3 +4,8 @@ target
 out
 vm-data
 dist
+
+# Windows-only resource file which must be at root of Go binary
+rsrc.syso
+
+
