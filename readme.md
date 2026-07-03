@@ -9,6 +9,7 @@
     - Current Status: None
  - Experimental stretch-goal: Daemon should bind to the system tray with an icon + menu for control, such as live config file re-reads. May only have limited platform support, with Windows x64 being the most important.
     - Current Status: not planned, but we'll see where the architecture takes us. Users prefer GUIs.
+ - Release goal: Setup Github Actions to cross-compile and publish releases for all platforms. Plan is to make a new release as simple as "git push" on the developers side, and "download + double-click" on the user's side. Also likely to have a self-upgrade "--list-releases" and "--upgrade [explicit-release-version]" capabilities.
 
 Design constraints:
 
