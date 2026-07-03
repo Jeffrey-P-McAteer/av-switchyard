@@ -184,8 +184,14 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
     try:
         pretty_cmd('sudo', 'parted', loop_dev, '--script', 'mklabel', 'gpt', 'mkpart', 'primary', 'fat32', '1MiB', '98%')
 
+        pretty_cmd('sync')
+        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
+
         # 3. Create Windows-compatible filesystem
         pretty_cmd('sudo', 'mkfs.vfat', '-F', '32', expected_partition_dev)
+
+        pretty_cmd('sync')
+        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
 
         # 4. Mount it, with user perms
         pretty_cmd('sudo', 'mount', '-o', f'uid={os.getuid()},gid={os.getgid()}', expected_partition_dev, mount_dir)
@@ -195,10 +201,12 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
 
         # 5. Copy files
         pretty_cmd(
-            'rsync', '-a',
+            'rsync', '-a', '--info=progress2',
             str(source_dir) + '/',
             mount_dir + '/'
         )
+
+        pretty_cmd('ls', '-alh', mount_dir)
 
         pretty_cmd('sync')
         pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
@@ -330,6 +338,8 @@ print()
 
 test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.img')
 test_vm_disk_image = create_windows_drive(test_artifacts_folder, test_vm_disk_image)
+
+time.sleep(0.5) # idk cache nonsense after create_windows_drive
 
 pretty_cmd(
   qemu_system_exe,
