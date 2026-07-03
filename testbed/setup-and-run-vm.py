@@ -159,6 +159,8 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
     if os.path.exists(output_img):
       os.remove(output_img)
 
+    pretty_cmd('sync')
+
     # 1. Create VHDX disk image (empty)
     pretty_cmd(
         'qemu-img', 'create',
@@ -173,6 +175,8 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
     ]).decode().strip()
     expected_partition_dev = loop_dev+'p1'
 
+    pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
+
     print('Loop device:', loop_dev)
 
     mount_dir = tempfile.mkdtemp(prefix='winimg_')
@@ -186,6 +190,9 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
         # 4. Mount it, with user perms
         pretty_cmd('sudo', 'mount', '-o', f'uid={os.getuid()},gid={os.getgid()}', expected_partition_dev, mount_dir)
 
+        pretty_cmd('sync')
+        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
+
         # 5. Copy files
         pretty_cmd(
             'rsync', '-a',
@@ -194,15 +201,18 @@ def create_windows_drive(source_dir, output_img, size_mb=-1):
         )
 
         pretty_cmd('sync')
+        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
 
     finally:
         # Cleanup
         try:
             pretty_cmd('sudo', 'umount', mount_dir)
+            pretty_cmd('sync')
         except Exception:
             pass
 
         pretty_cmd('sudo', 'losetup', '-d', loop_dev)
+        pretty_cmd('sync')
         shutil.rmtree(mount_dir)
 
     print(f'Created Windows usb drive: {output_img}')
