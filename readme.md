@@ -20,6 +20,7 @@ Design constraints:
 
  - `av-switchyard/`
     - Go code implementing the tool itself
+    - Build with `make build-all`, which compiles starting at `main.go` and outputs binaries to `av-switchyard/dist/av-switchyard-<target>`
 
 TODO utilities, helper scripts, et al get documented here.
 
