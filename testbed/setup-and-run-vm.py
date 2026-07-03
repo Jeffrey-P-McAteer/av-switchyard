@@ -15,6 +15,7 @@ import shlex
 import subprocess
 import datetime
 import tempfile
+import pathlib
 
 def die(msg):
   print(msg)
@@ -55,7 +56,7 @@ def pretty_cmd(*cmd, **kwargs):
 def ask_user_yn_question(question_str):
   while True:
     yn = input(question_str)
-    yn = yn.strip().lowercase()
+    yn = yn.strip().lower()
     if yn == 'y' or yn == 'yes':
       return True
     if yn == 'n' or yn == 'no':
@@ -113,10 +114,99 @@ def ovmf_to_qemu_args(code_path: str):
         ]
     return args
 
+
+def get_folder_size(path, follow_symlinks=False):
+    """
+    Compute total size of a folder in bytes.
+
+    Args:
+        path (str or Path): Folder path
+        follow_symlinks (bool): Whether to include symlink targets
+
+    Returns:
+        int: Total size in bytes
+    """
+    path = pathlib.Path(path)
+    total_size = 0
+
+    for root, dirs, files in os.walk(path, followlinks=follow_symlinks):
+        for name in files:
+            file_path = pathlib.Path(root) / name
+            try:
+                if not follow_symlinks and file_path.is_symlink():
+                    continue
+                total_size += file_path.stat().st_size
+            except (FileNotFoundError, PermissionError):
+                # Skip files that disappear or are inaccessible
+                continue
+
+    return total_size
+
+def create_windows_vhdx(source_dir, output_vhdx, size_mb=-1):
+    if size_mb <= 0:
+      size_mb = int( (get_folder_size() / 1_000_000.0) * 2.0 ) # 2x larger than the input folder.
+    if size_mb <= 64:
+      size_mb = 64 # if folder empty, bump size to some decent minimum.
+
+    source_dir = pathlib.Path(source_dir).resolve()
+    output_vhdx = pathlib.Path(output_vhdx).resolve()
+
+    if not source_dir.exists():
+        raise FileNotFoundError(source_dir)
+
+    # 1. Create VHDX disk image (empty)
+    pretty_cmd([
+        'qemu-img', 'create',
+        '-f', 'vhdx',
+        str(output_vhdx),
+        f'{size_mb}M'
+    ])
+
+    # 2. Attach loop device
+    loop_dev = subprocess.check_output([
+        'losetup', '--find', '--show', str(output_vhdx)
+    ]).decode().strip()
+
+    print('Loop device:', loop_dev)
+
+    mount_dir = tempfile.mkdtemp(prefix='winimg_')
+
+    try:
+        # 3. Create NTFS filesystem (Windows-compatible)
+        pretty_cmd(['mkfs.ntfs', '-F', loop_dev])
+
+        # 4. Mount it
+        pretty_cmd(['mount', loop_dev, mount_dir])
+
+        # 5. Copy files
+        pretty_cmd([
+            'rsync', '-a',
+            str(source_dir) + '/',
+            mount_dir + '/'
+        ])
+
+        pretty_cmd(['sync'])
+
+    finally:
+        # Cleanup
+        try:
+            pretty_cmd(['umount', mount_dir])
+        except Exception:
+            pass
+
+        pretty_cmd(['losetup', '-d', loop_dev])
+        shutil.rmtree(mount_dir)
+
+    print(f'Created Windows VHDX: {output_vhdx}')
+    return output_vhdx
+
+#################### MAIN ####################
+
 testbed_folder = os.path.dirname(os.path.realpath(__file__))
 
 req_bins = [
-  'qemu-system-x86_64', 'qemu-img'
+  'qemu-system-x86_64', 'qemu-img',
+  'losetup', 'mkfs.ntfs', 'rsync',
 ]
 
 for b in req_bins:
@@ -195,6 +285,8 @@ if not os.path.exists(vm_is_installed_flag_file):
       '-boot',    'order=d,menu=on', # prefer cd drive as boot target
       '-netdev',  'user,id=net0',
       '-device',  'e1000,netdev=net0',
+      '-device',  'qemu-xhci',
+      '-device',  'usb-tablet',
       '-vga',     'std',
       '-display', 'gtk',
   cwd=vm_data_folder)
@@ -211,6 +303,15 @@ if not os.path.exists(vm_is_installed_flag_file):
 
 print(f'OS install is complete, we see the flag file {vm_is_installed_flag_file}')
 
+test_artifacts_folder = os.path.join(vm_data_folder, 'test-artifacts')
+os.makedirs(test_artifacts_folder, exist_ok=True)
+print()
+print(f'Note: Move test files into the folder {test_artifacts_folder}')
+print()
+
+test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.vhdx')
+test_vm_disk_image = create_windows_vhdx(test_artifacts_folder, test_vm_disk_image)
+
 pretty_cmd(
   qemu_system_exe,
     '-enable-kvm',
@@ -220,8 +321,11 @@ pretty_cmd(
     '-machine', 'q35',
     *ovmf_to_qemu_args(ovmf_code_fd_file),
     '-drive',   f'file={vm_qcow2},format=qcow2,if=ide',
+    '-drive',   f'file={test_vm_disk_image},format=vhdx,if=ide',
     '-netdev',  'user,id=net0',
     '-device',  'e1000,netdev=net0',
+    '-device',  'qemu-xhci',
+    '-device',  'usb-tablet',
     '-vga',     'std',
     '-display', 'gtk',
 cwd=vm_data_folder)
