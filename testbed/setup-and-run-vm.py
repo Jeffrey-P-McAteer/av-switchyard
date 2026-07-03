@@ -344,7 +344,7 @@ time.sleep(0.5) # idk cache nonsense after create_windows_drive
 pretty_cmd(
   qemu_system_exe,
     '-enable-kvm',
-    '-m',       '8192',
+    '-m',       str(int(1024 * 16)), # 16gb ram - MA3 wants at least 8gb
     '-smp',     '4',
     '-cpu',     'host',
     '-machine', 'q35',
@@ -356,5 +356,8 @@ pretty_cmd(
     '-device',  'qemu-xhci',
     '-device',  'usb-tablet',
     '-vga',     'std',
-    '-display', 'gtk',
+    '-display', 'gtk,gl=on',      # MA3 wants OpenGL 4.1
+    '-device',  'virtio-vga-gl',  # MA3 wants OpenGL 4.1
 cwd=vm_data_folder)
+
+

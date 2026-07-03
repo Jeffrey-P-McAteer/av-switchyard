@@ -48,6 +48,15 @@ High-level dependencies assumed, CLI tools:
 
 More task-specific dependencies will be auto-detected and printed if missing by individual scripts.
 
+## Arch Linux Specific items
+
+For all of our QEMU GL-accelerated hardware you may need the GL extensions installed. QEMU is apparently large
+enough to merit breaking Arch's batteries-included packaging guidelines.
+
+```bash
+sudo pacman -S qemu-hw-display-virtio-gpu-gl qemu-hw-display-virtio-gpu-pci-gl qemu-hw-display-virtio-vga-gl
+```
+
 # Development Zero-To-Hero
 
 Presuming dependencies, run the following to get a binary for all supported targets:
