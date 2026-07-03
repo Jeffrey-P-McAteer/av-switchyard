@@ -16,6 +16,8 @@ import subprocess
 import datetime
 import tempfile
 import pathlib
+import getpass
+import time
 
 def die(msg):
   print(msg)
@@ -142,63 +144,69 @@ def get_folder_size(path, follow_symlinks=False):
 
     return total_size
 
-def create_windows_vhdx(source_dir, output_vhdx, size_mb=-1):
+def create_windows_drive(source_dir, output_img, size_mb=-1):
     if size_mb <= 0:
       size_mb = int( (get_folder_size(source_dir) / 1_000_000.0) * 2.0 ) # 2x larger than the input folder.
     if size_mb <= 64:
       size_mb = 64 # if folder empty, bump size to some decent minimum.
 
     source_dir = pathlib.Path(source_dir).resolve()
-    output_vhdx = pathlib.Path(output_vhdx).resolve()
+    output_img = pathlib.Path(output_img).resolve()
 
     if not source_dir.exists():
         raise FileNotFoundError(source_dir)
 
+    if os.path.exists(output_img):
+      os.remove(output_img)
+
     # 1. Create VHDX disk image (empty)
-    pretty_cmd([
+    pretty_cmd(
         'qemu-img', 'create',
-        '-f', 'vhdx',
-        str(output_vhdx),
+        '-f', 'raw',
+        str(output_img),
         f'{size_mb}M'
-    ])
+    )
 
     # 2. Attach loop device
     loop_dev = subprocess.check_output([
-        'losetup', '--find', '--show', str(output_vhdx)
+        'sudo', 'losetup', '--find', '--show', str(output_img)
     ]).decode().strip()
+    expected_partition_dev = loop_dev+'p1'
 
     print('Loop device:', loop_dev)
 
     mount_dir = tempfile.mkdtemp(prefix='winimg_')
 
     try:
-        # 3. Create NTFS filesystem (Windows-compatible)
-        pretty_cmd(['mkfs.ntfs', '-F', loop_dev])
+        pretty_cmd('sudo', 'parted', loop_dev, '--script', 'mklabel', 'gpt', 'mkpart', 'primary', 'fat32', '1MiB', '98%')
 
-        # 4. Mount it
-        pretty_cmd(['mount', loop_dev, mount_dir])
+        # 3. Create Windows-compatible filesystem
+        pretty_cmd('sudo', 'mkfs.vfat', '-F', '32', expected_partition_dev)
+
+        # 4. Mount it, with user perms
+        pretty_cmd('sudo', 'mount', '-o', f'uid={os.getuid()},gid={os.getgid()}', expected_partition_dev, mount_dir)
 
         # 5. Copy files
-        pretty_cmd([
+        pretty_cmd(
             'rsync', '-a',
             str(source_dir) + '/',
             mount_dir + '/'
-        ])
+        )
 
-        pretty_cmd(['sync'])
+        pretty_cmd('sync')
 
     finally:
         # Cleanup
         try:
-            pretty_cmd(['umount', mount_dir])
+            pretty_cmd('sudo', 'umount', mount_dir)
         except Exception:
             pass
 
-        pretty_cmd(['losetup', '-d', loop_dev])
+        pretty_cmd('sudo', 'losetup', '-d', loop_dev)
         shutil.rmtree(mount_dir)
 
-    print(f'Created Windows VHDX: {output_vhdx}')
-    return output_vhdx
+    print(f'Created Windows usb drive: {output_img}')
+    return output_img
 
 #################### MAIN ####################
 
@@ -206,7 +214,8 @@ testbed_folder = os.path.dirname(os.path.realpath(__file__))
 
 req_bins = [
   'qemu-system-x86_64', 'qemu-img',
-  'losetup', 'mkfs.ntfs', 'rsync',
+  'sudo', 'losetup', 'mkfs.vfat', 'rsync',
+  'parted',
 ]
 
 for b in req_bins:
@@ -228,7 +237,7 @@ and place it under the folder {vm_data_folder}
 )
 
 # Step step 2: have a .qcow2 for the VM, we can do this ourselves with qemu-img
-vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*.qcow2')
+vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*[wW]indows*.qcow2')
 if len(vm_qcow2s) > 1:
   die(f'We have found 2 or more VM hard drive files, please delete the one you do not plan to use! Discovered qcow2 files: {vm_qcow2s}')
 if len(vm_qcow2s) < 1:
@@ -309,8 +318,8 @@ print()
 print(f'Note: Move test files into the folder {test_artifacts_folder}')
 print()
 
-test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.vhdx')
-test_vm_disk_image = create_windows_vhdx(test_artifacts_folder, test_vm_disk_image)
+test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.img')
+test_vm_disk_image = create_windows_drive(test_artifacts_folder, test_vm_disk_image)
 
 pretty_cmd(
   qemu_system_exe,
@@ -321,7 +330,7 @@ pretty_cmd(
     '-machine', 'q35',
     *ovmf_to_qemu_args(ovmf_code_fd_file),
     '-drive',   f'file={vm_qcow2},format=qcow2,if=ide',
-    '-drive',   f'file={test_vm_disk_image},format=vhdx,if=ide',
+    '-drive',   f'file={test_vm_disk_image},format=raw,if=ide',
     '-netdev',  'user,id=net0',
     '-device',  'e1000,netdev=net0',
     '-device',  'qemu-xhci',
