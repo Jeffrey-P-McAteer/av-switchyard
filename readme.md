@@ -26,4 +26,8 @@ TODO utilities, helper scripts, et al get documented here.
 
 TODO
 
+# License
+
+The code in this repository is under the GPLv2 license (v2 only), see `LICENSE.txt` for details.
+The auto-upgrade clause has been removed because your legal rights shouldn't have that sort of volatility.
 
