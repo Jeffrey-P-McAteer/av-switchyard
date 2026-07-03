@@ -14,6 +14,7 @@ import glob
 import shlex
 import subprocess
 import datetime
+import tempfile
 
 def die(msg):
   print(msg)
@@ -57,11 +58,60 @@ def ask_user_yn_question(question_str):
     yn = yn.strip().lowercase()
     if yn == 'y' or yn == 'yes':
       return True
-    if yn == 'n' or yn == 'no'
+    if yn == 'n' or yn == 'no':
       return True
 
     print(f'Unknown response "{yn}", please answer with one of y/yes/n/no (ctrl+c to terminate this script)')
 
+def _derive_vars_path(code_path):
+    """
+    Try to infer matching OVMF_VARS file from OVMF_CODE file.
+    """
+    directory = os.path.dirname(code_path)
+    filename = os.path.basename(code_path)
+    candidates = []
+    # 1. Direct substitution: CODE -> VARS
+    if "CODE" in filename:
+        candidates.append(filename.replace("CODE", "VARS"))
+    # 2. 4M variant normalization
+    candidates.append(filename.replace(".4m.fd", ".fd").replace("CODE", "VARS"))
+    # 3. Generic fallback
+    candidates.append("OVMF_VARS.fd")
+    candidates.append("OVMF_VARS_4M.fd")
+    for c in candidates:
+        full = os.path.join(directory, c)
+        if os.path.exists(full):
+            return full
+    return None
+
+def ovmf_to_qemu_args(code_path: str):
+    """
+    Given OVMF_CODE path, return QEMU args for correct firmware usage.
+    Returns list of strings suitable for subprocess.
+    """
+
+    if not os.path.exists(code_path):
+        raise FileNotFoundError(code_path)
+    directory = os.path.dirname(code_path)
+    filename = os.path.basename(code_path)
+    args = []
+    vars_path = _derive_vars_path(code_path)
+    # Heuristic: if we have a VARS file use pflash mode (preferred)
+    if vars_path:
+        # Assume the vars file is immutable, copy to OS dir and send the modifiable copy to our args.
+        os_temp_dir_vars_file = os.path.join(tempfile.gettempdir(), 'av-switchyard-testbed-'+os.path.basename(vars_path))
+        if not os.path.exists(os_temp_dir_vars_file):
+          shutil.copy(vars_path, os_temp_dir_vars_file)
+        args += [
+            "-drive", f"if=pflash,format=raw,readonly=on,file={code_path}",
+            "-drive", f"if=pflash,format=raw,file={os_temp_dir_vars_file}",
+        ]
+    else:
+        # fallback: legacy mode
+        args += [
+            "-bios", code_path
+        ]
+    return args
 
 testbed_folder = os.path.dirname(os.path.realpath(__file__))
 
@@ -134,17 +184,18 @@ if not os.path.exists(vm_is_installed_flag_file):
 
   pretty_cmd(
     qemu_system_exe,
-      '-enable-kvm'
-      '-m', '8192',
-      '-smp', '4',
-      '-cpu', 'host',
+      '-enable-kvm',
+      '-m',       '8192',
+      '-smp',     '4',
+      '-cpu',     'host',
       '-machine', 'q35',
-      '-bios', f'{ovmf_code_fd_file}',
-      '-drive', f'file={vm_qcow2},format=qcow2,if=ide',
-      '-cdrom', f'{install_iso}',
-      '-netdev', 'user,id=net0',
-      '-device', 'e1000,netdev=net0',
-      '-vga', 'std',
+      *ovmf_to_qemu_args(ovmf_code_fd_file),
+      '-drive',   f'file={vm_qcow2},format=qcow2,if=ide',
+      '-cdrom',   f'{install_iso}',
+      '-boot',    'order=d,menu=on', # prefer cd drive as boot target
+      '-netdev',  'user,id=net0',
+      '-device',  'e1000,netdev=net0',
+      '-vga',     'std',
       '-display', 'gtk',
   cwd=vm_data_folder)
 
@@ -159,3 +210,18 @@ if not os.path.exists(vm_is_installed_flag_file):
   die(f'Exiting because OS was not installed, re-run this script to launch VM in install mode again when you are ready.')
 
 print(f'OS install is complete, we see the flag file {vm_is_installed_flag_file}')
+
+pretty_cmd(
+  qemu_system_exe,
+    '-enable-kvm',
+    '-m',       '8192',
+    '-smp',     '4',
+    '-cpu',     'host',
+    '-machine', 'q35',
+    *ovmf_to_qemu_args(ovmf_code_fd_file),
+    '-drive',   f'file={vm_qcow2},format=qcow2,if=ide',
+    '-netdev',  'user,id=net0',
+    '-device',  'e1000,netdev=net0',
+    '-vga',     'std',
+    '-display', 'gtk',
+cwd=vm_data_folder)
