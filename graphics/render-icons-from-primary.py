@@ -83,7 +83,10 @@ def generate_go_rsrc_syso(ico_file, go_src_folder):
 
   syso_file = os.path.join(go_src_folder, 'rsrc.syso')
   pretty_cmd(
-    shutil.which('rsrc'), '-ico', ico_file, '-o', syso_file
+    shutil.which('rsrc'),
+      '-arch', 'amd64', # NB: We can assume this because the only Windows architecture we use is x64.
+      '-ico', ico_file,
+      '-o', syso_file
   )
   print(f'Generated {syso_file}')
 
