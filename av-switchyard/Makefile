@@ -2,6 +2,8 @@ APP_NAME=av-switchyard
 OUT_DIR=dist
 
 build-all: clean
+	go get . || true
+
 	mkdir -p $(OUT_DIR)
 
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
