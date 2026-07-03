@@ -29,6 +29,11 @@ TODO utilities, helper scripts, et al get documented here.
 
 TODO
 
+# Prior art
+
+Signifiant inspiration from [marshallpt/artnet-python-bridge](https://github.com/marshallpt/artnet-python-bridge), both for technical protocol-level knowledge
+and control system logic.
+
 # License
 
 The code in this repository is under the GPLv2 license (v2 only), see `LICENSE.txt` for details.
