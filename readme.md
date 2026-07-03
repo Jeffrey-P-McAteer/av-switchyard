@@ -20,7 +20,8 @@ Design constraints:
 
  - `av-switchyard/`
     - Go code implementing the tool itself
-    - Build with `make build-all`, which compiles starting at `main.go` and outputs binaries to `av-switchyard/dist/av-switchyard-<target>`
+    - Build from Linux/MacOS hosts with `make build-all`, which compiles starting at `main.go` and outputs binaries to `av-switchyard/dist/av-switchyard-<target>`
+    - Not even beginning to write a build script for Windows dev hosts, just run `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/av-switchyard-windows-amd64.exe .` directly.
 
 TODO utilities, helper scripts, et al get documented here.
 
