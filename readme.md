@@ -23,6 +23,10 @@ Design constraints:
     - Build from Linux/MacOS hosts with `make build-all`, which compiles starting at `main.go` and outputs binaries to `av-switchyard/dist/av-switchyard-<target>`
     - Not even beginning to write a build script for Windows dev hosts, just run `GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -o dist/av-switchyard-windows-amd64.exe .` directly.
 
+ - `graphics/`
+    - Home of any icons and graphics used.
+    - `graphics/render-icons-from-primary.py` script to turn a single primary asset into build-tool assets under `graphics/build/*`
+
  - `testbed/`
     - Contains all scripts and data for a test VM to simulate a real-world use of the tool.
     - Primary run script is `./testbed/setup-and-run-vm.py` wich uses `uv` to run the python code.
