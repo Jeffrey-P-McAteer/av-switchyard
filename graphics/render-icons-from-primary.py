@@ -81,7 +81,7 @@ def generate_go_rsrc_syso(ico_file, go_src_folder):
   if shutil.which('rsrc') is None:
     die(f'Please install the binary rsrc!')
 
-  syso_file = os.path.join(go_src_folder, 'rsrc.syso')
+  syso_file = os.path.join(go_src_folder, 'rsrc_windows_amd64.syso')
   pretty_cmd(
     shutil.which('rsrc'),
       '-arch', 'amd64', # NB: We can assume this because the only Windows architecture we use is x64.

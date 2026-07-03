@@ -28,5 +28,6 @@ rsrc.syso:
 clean:
 	-rm -rf $(OUT_DIR)
 	-rm rsrc.syso
+	-rm rsrc_windows_amd64.syso
 
 

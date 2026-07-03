@@ -7,5 +7,5 @@ dist
 
 # Windows-only resource file which must be at root of Go binary
 rsrc.syso
-
+rsrc_windows_amd64.syso
 
