@@ -16,6 +16,12 @@ build-all: clean
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
 		go build -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
 
+	# Post-compile asset copying
+	mkdir -p ../testbed/vm-data/test-artifacts/
+	cp $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe ../testbed/vm-data/test-artifacts/
+
+
+
 clean:
 	rm -rf $(OUT_DIR)
 

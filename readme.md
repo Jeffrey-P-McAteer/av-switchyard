@@ -37,8 +37,7 @@ Design constraints:
  - `historic-progress/`
     - Contains timestamped screenshots of the tool for future perspective on the development story
 
-
-# Development Utilities
+# Development Dependencies
 
 High-level dependencies assumed, CLI tools:
 
@@ -47,7 +46,19 @@ High-level dependencies assumed, CLI tools:
  - `go`
  - `make`
 
-More task-specific dependnecies will be auto-detected and printed if missing by individual scripts.
+More task-specific dependencies will be auto-detected and printed if missing by individual scripts.
+
+# Development Zero-To-Hero
+
+Presuming dependencies, run the following to get a binary for all supported targets:
+
+```bash
+./graphics/render-icons-from-primary.py
+make -C av-switchyard build-all
+./testbed/setup-and-run-vm.py
+```
+
+The VM will have the latest windows x64 build in the USB drive attached.
 
 # Prior art
 
