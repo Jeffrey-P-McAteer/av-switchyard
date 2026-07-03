@@ -30,7 +30,9 @@ Design constraints:
     - Use `OVMF_CODE_FILE=/path/to/OVMF_CODE.fd` to override the automatic search under `/usr/share` - we do not hardcode paths which can be distro-specific.
     - Only supports simulating a Windows x64 VM and associated simulators for AV hardware (yet undetermined)
 
-TODO utilities, helper scripts, et al get documented here.
+ - `historic-progress/`
+    - Contains timestamped screenshots of the tool for future perspective on the development story
+
 
 # Development Utilities
 
