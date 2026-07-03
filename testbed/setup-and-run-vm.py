@@ -356,8 +356,9 @@ pretty_cmd(
     '-device',  'qemu-xhci',
     '-device',  'usb-tablet',
     '-vga',     'std',
+    #'-vga',     'none',
+    #'-device',  'virtio-vga',  # MA3 wants OpenGL 4.1
     '-display', 'gtk,gl=on',      # MA3 wants OpenGL 4.1
-    '-device',  'virtio-vga-gl',  # MA3 wants OpenGL 4.1
 cwd=vm_data_folder)
 
 

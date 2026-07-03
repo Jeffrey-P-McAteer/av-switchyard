@@ -55,6 +55,7 @@ enough to merit breaking Arch's batteries-included packaging guidelines.
 
 ```bash
 sudo pacman -S qemu-hw-display-virtio-gpu-gl qemu-hw-display-virtio-gpu-pci-gl qemu-hw-display-virtio-vga-gl
+# There is also a super-package: qemu-full
 ```
 
 # Development Zero-To-Hero
