@@ -1,6 +1,8 @@
 
 # av-switchyard
 
+[![Latest Release Download](https://img.shields.io/github/v/release/Jeffrey-P-McAeer/av-switchyard)](https://github.com/Jeffrey-P-McAeer/av-switchyard/releases/latest)
+
 `av-switchyard` is a _primarially_ command-line Go utility which performs the following capabilities
 
  - Scans all host interfaces for all visible AV equipment and report details of each visible machine / universe / component.
