@@ -6,17 +6,22 @@ Download Here -> [![Releases Download Page](https://img.shields.io/github/v/rele
 `av-switchyard` is a _primarially_ command-line Go utility which performs the following capabilities
 
  - Scans all host interfaces for all visible AV equipment and report details of each visible machine / universe / component.
-    - Current Status: None
+    - Status: None
+
  - Daemon capability to serve as a bridge between `grandMA3` and AV equipment, with a relatively simple `av-switchyard.toml` configuration file able to alter how the hardware is presented to `grandMA3`. Assumed to run on same host as `grandMA3`, and during startup the daemon will kill previous running copies of itself to ensure only one lives at a time.
-    - Current Status: None
+    - Status: Initial implementation of [marshallpt/artnet-python-bridge](https://github.com/marshallpt/artnet-python-bridge) is copied, and we do not have config overrides.
+    - Todo is write a `av-switchyard.toml` parser and place the default values in there so users can modify and the daemon can reload on file mtime changes.
+
  - Experimental stretch-goal: Daemon should bind to the system tray with an icon + menu for control, such as live config file re-reads. May only have limited platform support, with Windows x64 being the most important.
-    - Current Status: not planned, but we'll see where the architecture takes us. Users prefer GUIs.
+    - Status: not planned, but we'll see where the architecture takes us. Users prefer GUIs.
+
  - Release goal: Setup Github Actions to cross-compile and publish releases for all platforms. Plan is to make a new release as simple as "git push" on the developers side, and "download + double-click" on the user's side. Also likely to have a self-upgrade "--list-releases" and "--upgrade [explicit-release-version]" capabilities.
+    - Status: Done. Developers with a clean git repo can bump the patch version and push a CI release by running `./admin/bump-patch-version-and-push-release-tag.py`
 
 Design constraints:
 
  - Must run as single-executable on Windows x64, MacOS x64 + ARM64, and Linux x64.
-    - Current Status: None
+    - Status: All platforms supported, CI setup to build on all pushed `v*` tags with that version. No further work expected until we play with GUIs.
 
 # Repository Layout
 
@@ -38,6 +43,9 @@ Design constraints:
 
  - `historic-progress/`
     - Contains timestamped screenshots of the tool for future perspective on the development story
+
+ - `admin/`
+    - Contains scripts for high-level admin acions, such as bumping the patch version and sending the code to CI by running `./admin/bump-patch-version-and-push-release-tag.py`
 
 # Development Dependencies
 
