@@ -355,10 +355,10 @@ pretty_cmd(
     '-device',  'e1000,netdev=net0',
     '-device',  'qemu-xhci',
     '-device',  'usb-tablet',
-    '-vga',     'std',
-    #'-vga',     'none',
-    #'-device',  'virtio-vga',  # MA3 wants OpenGL 4.1
-    '-display', 'gtk,gl=on',      # MA3 wants OpenGL 4.1
+    # MA3 wants OpenGL 4.1, so the below lines are tuned to present a good integrated GPU to the VM
+    '-vga',     'none',
+    '-device',  'virtio-vga-gl',
+    '-display', 'gtk,gl=on',
 cwd=vm_data_folder)
 
 
