@@ -1,7 +1,7 @@
 
 # av-switchyard
 
-[![Releases Download Page](https://img.shields.io/github/v/release/Jeffrey-P-McAteer/av-switchyard)](https://github.com/Jeffrey-P-McAteer/av-switchyard/releases)
+Download Here -> [![Releases Download Page](https://img.shields.io/github/v/release/Jeffrey-P-McAteer/av-switchyard)](https://github.com/Jeffrey-P-McAteer/av-switchyard/releases)
 
 `av-switchyard` is a _primarially_ command-line Go utility which performs the following capabilities
 
