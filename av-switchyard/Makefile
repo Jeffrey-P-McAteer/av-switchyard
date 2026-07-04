@@ -16,47 +16,55 @@ build-all: clean rsrc.syso
 
 	mkdir -p $(OUT_DIR)
 
-	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
-
-	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
-
-	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
-		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
-
-	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
+	$(MAKE) build-linux-amd64
+	$(MAKE) build-windows-amd64
+	$(MAKE) build-mac-amd64
+	$(MAKE) build-mac-arm64
 
 	# Post-compile asset copying
 	mkdir -p ../testbed/vm-data/test-artifacts/
 	cp $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe ../testbed/vm-data/test-artifacts/
 
+
 rsrc.syso:
 	uv run ../graphics/render-icons-from-primary.py
 
-run-linux-amd64:
+
+build-linux-amd64:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
 		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
-	$(OUT_DIR)/$(APP_NAME)-linux-amd64 $(filter-out $@,$(MAKECMDGOALS))
 
-run-windows-amd64:
+build-windows-amd64: rsrc.syso
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
 		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
-	$(OUT_DIR)/$(APP_NAME)-windows-amd64.exe $(filter-out $@,$(MAKECMDGOALS))
 
-run-mac-amd64:
+build-mac-amd64:
 	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
 		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
-	$(OUT_DIR)/$(APP_NAME)-mac-amd64 $(filter-out $@,$(MAKECMDGOALS))
 
-run-mac-arm64:
+build-mac-arm64:
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
 		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
+
+
+
+run-linux-amd64: build-linux-amd64
+	$(OUT_DIR)/$(APP_NAME)-linux-amd64 $(filter-out $@,$(MAKECMDGOALS))
+
+run-windows-amd64: build-windows-amd64
+	$(OUT_DIR)/$(APP_NAME)-windows-amd64.exe $(filter-out $@,$(MAKECMDGOALS))
+
+run-mac-amd64: build-mac-amd64
+	$(OUT_DIR)/$(APP_NAME)-mac-amd64 $(filter-out $@,$(MAKECMDGOALS))
+
+run-mac-arm64: build-mac-arm64
 	$(OUT_DIR)/$(APP_NAME)-mac-arm64 $(filter-out $@,$(MAKECMDGOALS))
 
 %:
 	@:
+
+
+
 
 clean:
 	-rm -rf $(OUT_DIR)
