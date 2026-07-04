@@ -25,6 +25,29 @@ build-all: clean rsrc.syso
 rsrc.syso:
 	uv run ../graphics/render-icons-from-primary.py
 
+run-linux-amd64:
+	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+		go build -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
+	$(OUT_DIR)/$(APP_NAME)-linux-amd64 $(filter-out $@,$(MAKECMDGOALS))
+
+run-windows-amd64:
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
+		go build -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
+	$(OUT_DIR)/$(APP_NAME)-windows-amd64.exe $(filter-out $@,$(MAKECMDGOALS))
+
+run-mac-amd64:
+	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
+		go build -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
+	$(OUT_DIR)/$(APP_NAME)-mac-amd64 $(filter-out $@,$(MAKECMDGOALS))
+
+run-mac-arm64:
+	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
+		go build -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
+	$(OUT_DIR)/$(APP_NAME)-mac-arm64 $(filter-out $@,$(MAKECMDGOALS))
+
+%:
+	@:
+
 clean:
 	-rm -rf $(OUT_DIR)
 	-rm rsrc.syso

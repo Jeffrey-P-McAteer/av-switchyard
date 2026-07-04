@@ -70,6 +70,60 @@ make -C av-switchyard build-all
 
 The VM will have the latest windows x64 build in the USB drive attached.
 
+For testing on the host, several `run-*` targets exist which simply compile & run the output binary, forwarding all make targets except that one as CLI arguments.
+
+Example:
+
+```bash
+make -C av-switchyard run-linux-amd64 -- --help
+```
+
+```
+make: Entering directory '/j/proj/av-switchyard/av-switchyard'
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+   go build -o dist/av-switchyard-linux-amd64 .
+dist/av-switchyard-linux-amd64 --help
+Usage: switchyard <command> [flags]
+
+Lighting protocol bridge
+
+Flags:
+  -h, --help                    Show context-sensitive help.
+      --verbose                 Enable verbose logging.
+      --config="config.yaml"    Configuration file.
+      --listen=":9000"          Address to listen on.
+
+Commands:
+  run-daemon [flags]
+    Run the bridge daemon.
+
+  version [flags]
+    Print version information.
+
+Run "switchyard <command> --help" for more information on a command.
+```
+
+```bash
+make -C av-switchyard run-linux-amd64 -- run-daemon
+```
+
+```
+make: Entering directory '/j/proj/av-switchyard/av-switchyard'
+GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
+   go build -o dist/av-switchyard-linux-amd64 .
+dist/av-switchyard-linux-amd64 run-daemon
+ctx.Selected().Type = %s 1
+Running...
+Verbose:  false
+Config:   config.yaml
+Listen:   :9000
+ArtNet:   false
+sACN:     false
+Universe: 1
+DryRun:   false
+2026/07/04 08:49:17 listening on 0.0.0.0:6454 (net 0, universe 3), forwarding to 2.0.0.6:6454
+```
+
 # Prior art
 
 Signifiant inspiration from [marshallpt/artnet-python-bridge](https://github.com/marshallpt/artnet-python-bridge), both for technical protocol-level knowledge
