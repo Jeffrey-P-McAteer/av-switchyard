@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"syscall"
+	"log"
 )
 
 const (
@@ -33,6 +34,7 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	if _, err := tmp.Write(newBinary); err != nil {
 		return err
 	}
+	log.Printf("Wrote to temp file %s\n", tmp)
 
 	script := strings.Join([]string{
 	    fmt.Sprintf("$Pid=%d", pid),
@@ -63,11 +65,13 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	    "Move-Item -LiteralPath $TempFile -Destination $TargetFile -Force",
 	}, "\n")
 
+	log.Printf("= = = powershell script = = =\n%s\n\n", script)
+
 	cmd := exec.Command(
 		"powershell.exe",
 		"-NoProfile",
 		"-ExecutionPolicy", "Bypass",
-		"-WindowStyle", "Hidden",
+//		"-WindowStyle", "Hidden",
 		"-Command", script,
 	)
 
