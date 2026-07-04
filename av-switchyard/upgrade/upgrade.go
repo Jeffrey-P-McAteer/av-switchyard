@@ -26,6 +26,7 @@ import (
     "bytes"
     "crypto/sha256"
     "encoding/hex"
+    "strconv"
 
     "github.com/minio/selfupdate"
 
@@ -186,24 +187,49 @@ func normalize(v string) string {
     return strings.TrimPrefix(v, "v")
 }
 
-// simple semver-ish compare (major.minor.patch assumed)
 func versionLess(a, b string) bool {
-    pa := strings.Split(normalize(a), ".")
-    pb := strings.Split(normalize(b), ".")
+    aa := normalizeVersion(a)
+    bb := normalizeVersion(b)
 
-    for len(pa) < 3 {
-        pa = append(pa, "0")
-    }
-    for len(pb) < 3 {
-        pb = append(pb, "0")
+    maxLen := len(aa)
+    if len(bb) > maxLen {
+        maxLen = len(bb)
     }
 
-    for i := 0; i < 3; i++ {
-        if pa[i] != pb[i] {
-            return pa[i] < pb[i]
+    for i := 0; i < maxLen; i++ {
+        var ai, bi int
+
+        if i < len(aa) {
+            ai = aa[i]
+        }
+        if i < len(bb) {
+            bi = bb[i]
+        }
+
+        if ai < bi {
+            return true
+        }
+        if ai > bi {
+            return false
         }
     }
-    return false
+
+    return false // equal
+}
+
+func normalizeVersion(v string) []int {
+    v = strings.TrimPrefix(v, "v")
+    parts := strings.Split(v, ".")
+
+    out := make([]int, 0, len(parts))
+    for _, p := range parts {
+        n, err := strconv.Atoi(p)
+        if err != nil {
+            n = 0 // fallback for malformed segments
+        }
+        out = append(out, n)
+    }
+    return out
 }
 
 
