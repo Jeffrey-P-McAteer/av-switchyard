@@ -9,7 +9,7 @@ import (
 //    "github.com/jsimonetti/go-artnet/packet"
 )
 
-const SupportedSubcommandNames = "daemon, upgrade, scan"
+const SupportedSubcommandNames = "daemon, scan, version, upgrade"
 
 type CLI struct {
     Command     string `arg:"" optional:"" help:"subcommand to run, defaults to 'daemon'"`

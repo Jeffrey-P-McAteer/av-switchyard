@@ -1,5 +1,9 @@
 package version
 
+import (
+    "strings"
+)
+
 // Injected using LDFLAGS in Makefile
 var (
     Version   = "v0.0.0"
@@ -9,7 +13,7 @@ var (
 )
 
 func VersionString() string {
-    return Version + " (" + GitCommit + ") built on " + BuildDate + " by host " + BuildHost
+    return Version + " (" + GitCommit + ") built on " + BuildDate + " by host " + strings.TrimSpace(BuildHost)
 }
 
 

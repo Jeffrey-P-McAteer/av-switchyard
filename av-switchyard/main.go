@@ -16,7 +16,7 @@ func main() {
         &c,
         kong.Name("av-switchyard"),
         kong.Description(
-            "Lighting protocol bridge " + version.VersionString() + "\n" +
+            "av-switchyard " + version.VersionString() + "\n\n" +
             "Sub-commands: " + cli.SupportedSubcommandNames),
     )
 
