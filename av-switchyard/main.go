@@ -1,8 +1,6 @@
 package main
 
 import (
-    "log"
-
     "github.com/alecthomas/kong"
 
     "av-switchyard/cli"
@@ -16,19 +14,13 @@ func main() {
     ctx := kong.Parse(
         &c,
         kong.Name("av-switchyard"),
-        kong.Description("Lighting protocol bridge " + version.VersionString()),
+        kong.Description(
+            "Lighting protocol bridge " + version.VersionString() + "\n" +
+            "Sub-commands: " + cli.SupportedSubcommandNames),
     )
 
     c.Func_RunDaemon = daemon.RunDaemon
 
-    // If a subcommand was selected, let Kong execute it.
-    if ctx.Selected().Type != kong.ApplicationNode {
-        ctx.FatalIfErrorf(ctx.Run())
-        return
-    }
-
-    // Otherwise execute the default action.
-    if err := c.Run(); err != nil {
-        log.Fatal(err)
-    }
+    // Executes Run() in cli/commands.go
+    ctx.FatalIfErrorf(ctx.Run())
 }
