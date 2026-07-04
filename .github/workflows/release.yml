@@ -55,7 +55,7 @@ jobs:
           cd av-switchyard/dist
 
           mkdir -p ziptmp
-          cp av-switchyard-windows-amd64.exe ziptmp/av-switchyard.exe
+          cp av-switchyard-windows-amd64.exe ziptmp/av-switchyard-windows-amd64.exe
 
           cd ziptmp
           zip -r ../av-switchyard-windows-amd64.zip .
