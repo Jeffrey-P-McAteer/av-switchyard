@@ -37,7 +37,7 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	log.Printf("Wrote to temp file %s\n", tmp)
 
 	script := strings.Join([]string{
-	    fmt.Sprintf("$Pid=%d", pid),
+	    fmt.Sprintf("$TrackedPid=%d", pid),
 	    fmt.Sprintf("$TempFile=%s", psQuote(tmp.Name())),
 	    fmt.Sprintf("$TargetFile=%s", psQuote(exePath)),
 	    "",
@@ -46,7 +46,7 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	    "Add-Type -AssemblyName PresentationFramework",
 	    "Start-Sleep -Milliseconds 500",
 	    "while ($true) {",
-	    "    if (!(Get-Process -Id $Pid -ErrorAction SilentlyContinue)) {",
+	    "    if (!(Get-Process -Id $TrackedPid -ErrorAction SilentlyContinue)) {",
 	    "        break",
 	    "    }",
 	    "",
