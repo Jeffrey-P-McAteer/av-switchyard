@@ -1,0 +1,166 @@
+/* ---------- Theme ---------- */
+
+:root {
+    --bg: #f3f6fb;
+    --fg: #1e293b;
+    --accent: #0f6cbd;
+
+    --panel: #ffffff;
+    --border: #d9e2ec;
+
+    --shadow: 0 12px 40px rgba(0,0,0,.12);
+    --radius: 18px;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root {
+        --bg: #0f172a;
+        --fg: #f1f5f9;
+        --accent: #6cb6ff;
+
+        --panel: #1b2538;
+        --border: #334155;
+
+        --shadow: 0 12px 40px rgba(0,0,0,.45);
+    }
+}
+
+html {
+    color-scheme: light dark;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+/* ---------- Page ---------- */
+
+body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+
+    font-family:
+        system-ui,
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        sans-serif;
+
+    line-height: 1.7;
+}
+
+/* ---------- Banner ---------- */
+
+img#banner {
+    display: block;
+
+    width: min(1200px, calc(100% - 4rem));
+    height: auto;
+
+    margin: 2.5rem auto 1.5rem auto;
+
+    border-radius: var(--radius);
+
+    box-shadow: var(--shadow);
+
+    object-fit: cover;
+}
+
+/* ---------- Main content ---------- */
+
+main {
+    max-width: 900px;
+
+    margin: 0 auto 4rem auto;
+
+    padding: 2.5rem 3rem;
+
+    background: var(--panel);
+
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+
+    box-shadow: var(--shadow);
+}
+
+/* ---------- Typography ---------- */
+
+h1 {
+    margin-top: 0;
+
+    font-size: clamp(2.25rem, 5vw, 3.5rem);
+    line-height: 1.15;
+}
+
+h2 {
+    margin-top: 2.5rem;
+    padding-bottom: .4rem;
+
+    border-bottom: 1px solid var(--border);
+
+    font-size: 1.5rem;
+}
+
+p {
+    margin: 1rem 0;
+    font-size: 1.05rem;
+}
+
+/* ---------- Links ---------- */
+
+a {
+    color: var(--accent);
+    text-decoration: none;
+    font-weight: 500;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* ---------- Images ---------- */
+
+img {
+    max-width: 100%;
+    height: auto;
+}
+
+/* ---------- Optional content cards ---------- */
+
+.card {
+    margin: 2rem 0;
+    padding: 1.5rem;
+
+    background: color-mix(in srgb, var(--panel) 95%, var(--accent));
+
+    border: 1px solid var(--border);
+    border-radius: 12px;
+}
+
+/* ---------- Mobile ---------- */
+
+@media (max-width: 700px) {
+
+    img#banner {
+        width: 100%;
+        margin: 0;
+
+        border-radius: 0 0 var(--radius) var(--radius);
+    }
+
+    main {
+        max-width: none;
+
+        margin: 1rem;
+        padding: 1.5rem;
+
+        border-radius: var(--radius);
+    }
+
+    h1 {
+        font-size: 2rem;
+    }
+}
+
+
