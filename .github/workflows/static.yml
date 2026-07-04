@@ -2,9 +2,11 @@
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes targeting the default branch
+  # Runs on pushes targeting the ~~default branch~~ tags
   push:
     branches: ["trunk"]
+#    tags:
+#      - "v*"
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -31,6 +33,26 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+# Make any automated generation occur in this step
+      - name: Copy assets into www folder
+        run: |
+          mkdir -p www/graphics
+          mkdir -p www/progress
+
+          cp -r graphics/* www/graphics/ || true
+          cp -r historic-progress/* www/historic-progress/ || true
+
+          find www/ -type f \
+            ! -name "site-index.json" \
+            -printf "%P\n" \
+            | sort \
+            | jq -R -s '
+                split("\n")
+                | map(select(length > 0))
+              ' > www/site-index.json
+
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Upload artifact
