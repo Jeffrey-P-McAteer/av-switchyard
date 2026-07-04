@@ -14,7 +14,7 @@ func main() {
 
     ctx := kong.Parse(
         &c,
-        kong.Name("switchyard"),
+        kong.Name("av-switchyard"),
         kong.Description("Lighting protocol bridge"),
     )
 
