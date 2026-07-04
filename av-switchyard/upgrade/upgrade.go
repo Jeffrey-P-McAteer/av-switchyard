@@ -27,6 +27,8 @@ import (
     "crypto/sha256"
     "encoding/hex"
 
+    "github.com/minio/selfupdate"
+
     "av-switchyard/cli"
 )
 
@@ -78,7 +80,7 @@ func RunUpgrade(c *cli.CLI) error {
         return errors.New("Error downloading asset")
     }
 
-    var payload []byte
+    var update_payload []byte
 
     if strings.HasSuffix(asset.Name, ".zip") {
         files, err := extractZipInMemory(data)
@@ -89,26 +91,26 @@ func RunUpgrade(c *cli.CLI) error {
 
         // assume single binary inside zip
         for _, v := range files {
-            payload = v
+            update_payload = v
             break
         }
     } else {
-        payload = data
+        update_payload = data
     }
 
-    log.Printf("Downloaded binary size %.3f MB", float64(len(payload)) / 1_000_000 )
-    log.Printf("Binary %s version %s has sha256 hash %s", ComputeBinaryName(), selected.TagName, SHA256Lower(payload) )
+    log.Printf("Downloaded binary size %.3f MB", float64(len(update_payload)) / 1_000_000 )
+    log.Printf("Binary %s version %s has sha256 hash %s", ComputeBinaryName(), selected.TagName, SHA256Lower(update_payload) )
 
     exe := getExecutablePath()
 
     log.Printf("Replacing: %s", exe)
 
-    if err := FinalizeUpgrade(exe, payload) ; err != nil {
-        log.Printf("Error replacing: %s - %v\n", exe, err)
-        return errors.New("Error downloading asset")
+    update_payload_reader := bytes.NewReader(update_payload)
+    err2 := selfupdate.Apply(update_payload_reader, selfupdate.Options{ TargetPath: exe })
+    if err2 != nil {
+        log.Printf("Error self-updating: %v\n", err2)
+        return err2
     }
-
-    log.Printf("Upgrade complete - on Windows powershell will replace file in background after this process exits.")
 
     return nil
 }
