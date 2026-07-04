@@ -5,10 +5,13 @@ package upgrade
 import (
 	"fmt"
 	"os"
-	"os/exec"
+	//"os/exec"
+	//"syscall"
 	"strings"
-	"syscall"
 	"log"
+	"golang.org/x/sys/windows"
+	"encoding/base64"
+	"unicode/utf16"
 )
 
 const (
@@ -34,14 +37,14 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	if _, err := tmp.Write(newBinary); err != nil {
 		return err
 	}
-	log.Printf("Wrote to temp file %s\n", tmp)
+	log.Printf("Wrote to temp file %s\n", tmp.Name())
 
 	script := strings.Join([]string{
 	    fmt.Sprintf("$TrackedPid=%d", pid),
 	    fmt.Sprintf("$TempFile=%s", psQuote(tmp.Name())),
 	    fmt.Sprintf("$TargetFile=%s", psQuote(exePath)),
 	    "",
-	    "$Deadline=(Get-Date).AddSeconds(30)",
+	    "$Deadline=(Get-Date).AddSeconds(12)",
 	    "",
 	    "Add-Type -AssemblyName PresentationFramework",
 	    "Start-Sleep -Milliseconds 500",
@@ -57,7 +60,7 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 	    `            ,"Upgrade Failed"`,
 	    "        )",
 	    "",
-	    "        exit 1",
+	    "        break",
 	    "    }",
 	    "",
 	    "    Start-Sleep -Milliseconds 500",
@@ -75,19 +78,41 @@ func FinalizeUpgrade(exePath string, newBinary []byte) error {
 
 	log.Printf("= = = powershell script = = =\n%s\n\n", script)
 
-	cmd := exec.Command(
-		"powershell.exe",
-		"-NoProfile",
-		"-ExecutionPolicy", "Bypass",
-//		"-WindowStyle", "Hidden",
-		"-Command", script,
+	// cmd := exec.Command(
+	// 	"powershell.exe",
+	// 	"-NoProfile",
+	// 	"-ExecutionPolicy", "Bypass",
+	// 	"-Command", script,
+	// )
+
+	// sysproc_attrs := syscall.SysProcAttr{
+	// 	CreationFlags: CREATE_NEW_PROCESS_GROUP | DETACHED_PROCESS,
+	// }
+	// cmd.SysProcAttr = &sysproc_attrs
+
+	// return cmd.Start()
+	encoded := encodePowerShell(script)
+
+	err2 := windows.ShellExecute(
+		0,
+		nil,
+		windows.StringToUTF16Ptr("powershell.exe"),
+		windows.StringToUTF16Ptr("-NoProfile -ExecutionPolicy Bypass -NoExit -EncodedCommand \""+encoded+"\""),
+		nil,
+		windows.SW_SHOWNORMAL,
 	)
 
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		CreationFlags: CREATE_NEW_PROCESS_GROUP |
-			DETACHED_PROCESS,
-	}
-
-	return cmd.Start()
+	return err2
 }
 
+func encodePowerShell(script string) string {
+	utf16Bytes := utf16.Encode([]rune(script))
+
+	b := make([]byte, len(utf16Bytes)*2)
+	for i, v := range utf16Bytes {
+		b[i*2] = byte(v)
+		b[i*2+1] = byte(v >> 8)
+	}
+
+	return base64.StdEncoding.EncodeToString(b)
+}
