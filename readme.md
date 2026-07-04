@@ -93,26 +93,26 @@ make -C av-switchyard run-linux-amd64 -- --help
 ```
 make: Entering directory '/j/proj/av-switchyard/av-switchyard'
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-   go build -o dist/av-switchyard-linux-amd64 .
+   go build -ldflags "-X av-switchyard/version.Version=v0.0.15 -X av-switchyard/version.GitCommit=af0e5c0 -X av-switchyard/version.BuildDate=2026-07-04T20:29:50Z -X av-switchyard/version.BuildHost=azure-angel" -o dist/av-switchyard-linux-amd64 .
 dist/av-switchyard-linux-amd64 --help
-Usage: switchyard <command> [flags]
+Usage: av-switchyard [<command>] [flags]
 
-Lighting protocol bridge
+av-switchyard v0.0.15 (af0e5c0) built 2026-07-04T20:29:50Z by azure-angel
+
+Sub-commands: daemon, scan, version, upgrade
+
+Arguments:
+  [<command>]    subcommand to run, defaults to 'daemon'
 
 Flags:
-  -h, --help                    Show context-sensitive help.
-      --verbose                 Enable verbose logging.
-      --config="config.yaml"    Configuration file.
-      --listen=":9000"          Address to listen on.
-
-Commands:
-  run-daemon [flags]
-    Run the bridge daemon.
-
-  version [flags]
-    Print version information.
-
-Run "switchyard <command> --help" for more information on a command.
+  -h, --help                                Show context-sensitive help.
+      --upgrade-version=""                  command: upgrade. Instead of the most-recent version, upgrade to
+                                            this specific version.
+      --config-file="av-switchyard.toml"    command: daemon, scan. Configuration file. If not specified and
+                                            the environment variable AV_SWITCHYARD_CONFIG is set, we will use
+                                            that as the default value.
+      --verbose                             command: All. Enable verbose logging.
+make: Leaving directory '/j/proj/av-switchyard/av-switchyard'
 ```
 
 ```bash
@@ -120,20 +120,12 @@ make -C av-switchyard run-linux-amd64 -- run-daemon
 ```
 
 ```
+make -C av-switchyard run-linux-amd64 -- daemon
 make: Entering directory '/j/proj/av-switchyard/av-switchyard'
 GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-   go build -o dist/av-switchyard-linux-amd64 .
-dist/av-switchyard-linux-amd64 run-daemon
-ctx.Selected().Type = %s 1
-Running...
-Verbose:  false
-Config:   config.yaml
-Listen:   :9000
-ArtNet:   false
-sACN:     false
-Universe: 1
-DryRun:   false
-2026/07/04 08:49:17 listening on 0.0.0.0:6454 (net 0, universe 3), forwarding to 2.0.0.6:6454
+   go build -ldflags "-X av-switchyard/version.Version=v0.0.15 -X av-switchyard/version.GitCommit=af0e5c0 -X av-switchyard/version.BuildDate=2026-07-04T20:30:21Z -X av-switchyard/version.BuildHost=azure-angel" -o dist/av-switchyard-linux-amd64 .
+dist/av-switchyard-linux-amd64 daemon
+2026/07/04 16:30:21 listening on 0.0.0.0:6454 (net 0, universe 3), forwarding to 2.0.0.6:6454
 ```
 
 # Prior art
