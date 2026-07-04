@@ -1,0 +1,80 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate tag matches version.txt
+        working-directory: ./av-switchyard
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+
+          FILE_VERSION=$(cat version.txt | tr -d ' \t\r\n')
+
+          echo "Tag: $TAG"
+          echo "version.txt: $FILE_VERSION"
+
+          if [ "$TAG" != "$FILE_VERSION" ]; then
+            echo "❌ Version mismatch!"
+            echo "Git tag does not match av-switchyard/version.txt, please update version.txt before pushing your tag!"
+            exit 1
+          fi
+
+          echo "✅ Tagged version matches version.txt"
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install uv (Python tooling)
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Add uv to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Build all binaries
+        working-directory: ./av-switchyard
+        run: |
+          make build-all
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: av-switchyard-binaries
+          path: av-switchyard/dist/*
+
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: av-switchyard-binaries
+          path: dist
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/av-switchyard-linux-amd64
+            dist/av-switchyard-mac-amd64
+            dist/av-switchyard-mac-arm64
+            dist/av-switchyard-windows-amd64.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
