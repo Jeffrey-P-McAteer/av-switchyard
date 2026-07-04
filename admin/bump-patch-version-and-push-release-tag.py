@@ -90,6 +90,7 @@ with open(version_txt_file, 'w') as fd:
 # Commit changes
 pretty_cmd('git', 'add', version_txt_file)
 pretty_cmd('git', 'commit', '-m', f'Version update to {new_version}')
+pretty_cmd('git', 'push')
 
 # Create and push tag to 'origin' (TODO abstract out and find the first/last-used remote? Likely too much work to matter)
 pretty_cmd('git', 'tag', new_version)
