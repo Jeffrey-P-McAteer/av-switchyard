@@ -18,6 +18,9 @@ func main() {
         kong.Description(
             "av-switchyard " + version.VersionString() + "\n\n" +
             "Sub-commands: " + cli.SupportedSubcommandNames),
+        kong.ConfigureHelp(kong.HelpOptions{
+            WrapUpperBound: 120,
+        }),
     )
 
     c.Func_RunDaemon = daemon.RunDaemon
