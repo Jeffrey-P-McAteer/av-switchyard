@@ -1,22 +1,32 @@
 APP_NAME=av-switchyard
 OUT_DIR=dist
 
+VERSION ?= $(shell cat version.txt)
+COMMIT ?= $(shell git rev-parse --short HEAD)
+DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+BUILD_HOST ?= $(shell hostname)
+
+LDFLAGS=-ldflags "-X av-switchyard/version.Version=$(VERSION) \
+                  -X av-switchyard/version.GitCommit=$(COMMIT) \
+                  -X av-switchyard/version.BuildDate=$(DATE) \
+                  -X av-switchyard/version.BuildHost=$(BUILD_HOST)"
+
 build-all: clean rsrc.syso
 	-go get .
 
 	mkdir -p $(OUT_DIR)
 
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
 
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
 
 	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
 
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
 
 	# Post-compile asset copying
 	mkdir -p ../testbed/vm-data/test-artifacts/
@@ -27,22 +37,22 @@ rsrc.syso:
 
 run-linux-amd64:
 	GOOS=linux GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-linux-amd64 .
 	$(OUT_DIR)/$(APP_NAME)-linux-amd64 $(filter-out $@,$(MAKECMDGOALS))
 
 run-windows-amd64:
 	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-windows-amd64.exe .
 	$(OUT_DIR)/$(APP_NAME)-windows-amd64.exe $(filter-out $@,$(MAKECMDGOALS))
 
 run-mac-amd64:
 	GOOS=darwin GOARCH=amd64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-amd64 .
 	$(OUT_DIR)/$(APP_NAME)-mac-amd64 $(filter-out $@,$(MAKECMDGOALS))
 
 run-mac-arm64:
 	GOOS=darwin GOARCH=arm64 CGO_ENABLED=0 \
-		go build -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
+		go build $(LDFLAGS) -o $(OUT_DIR)/$(APP_NAME)-mac-arm64 .
 	$(OUT_DIR)/$(APP_NAME)-mac-arm64 $(filter-out $@,$(MAKECMDGOALS))
 
 %:

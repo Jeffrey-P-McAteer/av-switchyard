@@ -7,6 +7,7 @@ import (
 
     "av-switchyard/cli"
     "av-switchyard/daemon"
+    "av-switchyard/version"
 )
 
 func main() {
@@ -15,7 +16,7 @@ func main() {
     ctx := kong.Parse(
         &c,
         kong.Name("av-switchyard"),
-        kong.Description("Lighting protocol bridge"),
+        kong.Description("Lighting protocol bridge " + version.VersionString()),
     )
 
     c.Func_RunDaemon = daemon.RunDaemon
