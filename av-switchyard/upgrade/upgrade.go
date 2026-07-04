@@ -103,12 +103,12 @@ func RunUpgrade(c *cli.CLI) error {
 
     log.Printf("Replacing: %s", exe)
 
-    // if err := atomicReplace(payload, exe); err != nil {
-    //     log.Printf("Error replacing executable at %s - %v\n", exe, err)
-    //     return errors.New("Error replacing executable")
-    // }
+    if err := FinalizeUpgrade(exe, payload) ; err != nil {
+        log.Printf("Error replacing: %s - %v\n", exe, err)
+        return errors.New("Error downloading asset")
+    }
 
-    log.Printf("Upgrade complete")
+    log.Printf("Upgrade complete - on Windows powershell will replace file in background after this process exits.")
 
     return nil
 }
