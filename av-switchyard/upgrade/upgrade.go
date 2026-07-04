@@ -40,7 +40,7 @@ func RunUpgrade(c *cli.CLI) error {
 
     releases, err := fetchReleases(gh_owner, gh_repo)
     if err != nil {
-        log.Println("error fetching releases: %v", err)
+        log.Printf("error fetching releases: %v\n", err)
         return err
     }
 

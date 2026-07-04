@@ -27,7 +27,8 @@ type CLI struct {
     Verbose bool `help:"command: All. Enable verbose logging."`
 
     // Injected by main, to allow cli -> daemon calls without violating Go's strict DAG compilation design.
-    Func_RunDaemon func(*CLI) error `kong:"-"`
+    Func_RunDaemon  func(*CLI) error `kong:"-"`
     Func_RunUpgrade func(*CLI) error `kong:"-"`
+    Func_RunScan    func(*CLI) error `kong:"-"`
 }
 

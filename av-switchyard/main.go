@@ -5,6 +5,7 @@ import (
 
     "av-switchyard/cli"
     "av-switchyard/daemon"
+    "av-switchyard/scan"
     "av-switchyard/upgrade"
     "av-switchyard/version"
 )
@@ -25,6 +26,7 @@ func main() {
 
     c.Func_RunDaemon = daemon.RunDaemon
     c.Func_RunUpgrade = upgrade.RunUpgrade
+    c.Func_RunScan = scan.RunScan
 
     // Executes Run() in cli/commands.go
     ctx.FatalIfErrorf(ctx.Run())

@@ -18,6 +18,9 @@ func (c *CLI) Run() error {
         case "upgrade", "update":
             return c.Func_RunUpgrade(c)
 
+        case "scan":
+            return c.Func_RunScan(c)
+
         default:
             return fmt.Errorf("unknown command: %s\nSupported commands are: %s", c.Command, SupportedSubcommandNames)
     }
