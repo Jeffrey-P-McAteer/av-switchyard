@@ -13,7 +13,7 @@ var (
 )
 
 func VersionString() string {
-    return Version + " (" + GitCommit + ") built on " + BuildDate + " by host " + strings.TrimSpace(BuildHost)
+    return Version + " (" + GitCommit + ") built " + BuildDate + " by " + strings.TrimSpace(BuildHost)
 }
 
 
