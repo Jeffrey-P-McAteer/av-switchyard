@@ -11,6 +11,7 @@ import os
 import sys
 import subprocess
 import re
+import shlex
 
 def die(msg):
   print(msg)
