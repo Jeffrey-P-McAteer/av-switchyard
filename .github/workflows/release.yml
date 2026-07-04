@@ -50,6 +50,19 @@ jobs:
         run: |
           make build-all
 
+      - name: Zip Windows binary
+        run: |
+          cd av-switchyard/dist
+
+          mkdir -p ziptmp
+          cp av-switchyard-windows-amd64.exe ziptmp/av-switchyard.exe
+
+          cd ziptmp
+          zip -r ../av-switchyard-windows-amd64.zip .
+
+          cd ..
+          rm -rf ziptmp
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -76,5 +89,6 @@ jobs:
             dist/av-switchyard-mac-amd64
             dist/av-switchyard-mac-arm64
             dist/av-switchyard-windows-amd64.exe
+            dist/av-switchyard-windows-amd64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
