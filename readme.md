@@ -40,7 +40,7 @@ Design constraints:
 
  - `testbed/`
     - Contains all scripts and data for a test VM to simulate a real-world use of the tool.
-    - Primary run script is `./testbed/setup-and-run-vm.py` wich uses `uv` to run the python code.
+    - Primary run script is `./testbed/setup-and-run-MA3-vm.py` wich uses `uv` to run the python code.
     - Requires OS files and `qemu-system-x86_64`, `qemu-img`, and an OVMF install of some sort.
     - Use `OVMF_CODE_FILE=/path/to/OVMF_CODE.fd` to override the automatic search under `/usr/share` - we do not hardcode paths which can be distro-specific.
     - Only supports simulating a Windows x64 VM and associated simulators for AV hardware (yet undetermined)
@@ -87,7 +87,7 @@ Presuming dependencies, run the following to get a binary for all supported targ
 ```bash
 ./graphics/render-icons-from-primary.py
 make -C av-switchyard build-all
-./testbed/setup-and-run-vm.py
+./testbed/setup-and-run-MA3-vm.py
 ```
 
 The VM will have the latest windows x64 build in the USB drive attached.
