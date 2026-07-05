@@ -44,6 +44,7 @@ Design constraints:
     - Requires OS files and `qemu-system-x86_64`, `qemu-img`, and an OVMF install of some sort.
     - Use `OVMF_CODE_FILE=/path/to/OVMF_CODE.fd` to override the automatic search under `/usr/share` - we do not hardcode paths which can be distro-specific.
     - Only supports simulating a Windows x64 VM and associated simulators for AV hardware (yet undetermined)
+    - NOTE: Due to the increasing use of host-specific resources such as OpenGL and network-bridge setup, assume everything under `testbed/` can only be used on Linux machines.
 
  - `historic-progress/`
     - Contains timestamped screenshots of the tool for future perspective on the development story
