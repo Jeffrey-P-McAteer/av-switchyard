@@ -51,6 +51,12 @@ Design constraints:
  - `admin/`
     - Contains scripts for high-level admin acions, such as bumping the patch version and sending the code to CI by running `./admin/bump-patch-version-and-push-release-tag.py`
 
+ - `www/`
+    - Contains the landing page source code, hosted on GH pages at https://jeffrey-p-mcateer.github.io/av-switchyard/
+    - For a local preview, run `./www/www-local-preview.py`
+    - The preview script performs the same asset copying and index-build as `.github/workflows/static.yml`
+
+
 # Development Dependencies
 
 High-level dependencies assumed, CLI tools:
@@ -61,6 +67,7 @@ High-level dependencies assumed, CLI tools:
  - `make`
 
 More task-specific dependencies will be auto-detected and printed if missing by individual scripts.
+
 
 ## Arch Linux Specific items
 
