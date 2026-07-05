@@ -13,4 +13,6 @@ Will manually download + update or use the USB drive to update tested copy of `a
 
 Configured second LAN adapter to be 2.0.0.100/16
 
+Disabled defender firewall on all NICS & Connection types.
+
 

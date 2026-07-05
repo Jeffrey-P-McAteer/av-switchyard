@@ -18,6 +18,7 @@ import tempfile
 import pathlib
 import getpass
 import time
+import hashlib
 
 def die(msg):
   print(msg)
@@ -144,6 +145,20 @@ def get_folder_size(path, follow_symlinks=False):
 
     return total_size
 
+def deterministic_mac(seed):
+    h = hashlib.sha256(str(seed).encode()).digest()
+
+    # QEMU/KVM safe prefix
+    mac = [
+        0x52, 0x54,           # QEMU OUI
+        h[0] & 0x7F,          # ensure unicast (clear multicast bit)
+        h[1],
+        h[2],
+        h[3],
+    ]
+
+    return ":".join(f"{b:02x}" for b in mac)
+
 #################### MAIN ####################
 
 testbed_folder = os.path.dirname(os.path.realpath(__file__))
@@ -255,7 +270,7 @@ if len(os.environ.get('VM_TAP_NAME', '')) > 0:
   tap_name = os.environ.get('VM_TAP_NAME', '')
   av_bridge_qemu_args = [
     '-netdev', f'tap,id=net1,ifname={tap_name},script=no,downscript=no',
-    '-device', 'e1000,netdev=net1',
+    '-device', f'e1000,netdev=net1,mac={deterministic_mac(tap_name)}',
   ]
 
 
