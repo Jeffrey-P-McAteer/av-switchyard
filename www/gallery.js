@@ -24,7 +24,7 @@
   }
 
   async function loadSiteIndex() {
-    const res = await fetch("/site-index.json", { cache: "no-store" });
+    const res = await fetch("site-index.json", { cache: "no-store" });
     const data = await res.json();
 
     window.gallery_images = extractImages(data);
