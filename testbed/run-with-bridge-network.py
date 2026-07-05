@@ -58,7 +58,7 @@ try:
     subproc_env = dict(os.environ)
     subproc_env['VM_TAP_NAME'] = tap_name # each vm python script checks & creates network interface for this.
     subprocs.append(
-      subprocess.Popen(['sh', '-c', arg], bufsize=1, text=True, env=subproc_env)
+      subprocess.Popen(['sh', '-c', subcommand], bufsize=1, text=True, env=subproc_env)
     )
   while len(subprocs) > 0:
     time.sleep(0.25)
