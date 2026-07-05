@@ -240,7 +240,7 @@ for b in req_bins:
   if shutil.which(b) is None:
     die(f'Cannot find required binary {b}, please install and ensure containing folder is on your $PATH')
 
-vm_data_folder = os.path.join(testbed_folder, 'vm-data')
+vm_data_folder = os.path.join(testbed_folder, 'vm-data-MA3')
 os.makedirs(vm_data_folder, exist_ok=True)
 
 # Setup step 1: Do we have a windows 10 iso image to do initial install with?

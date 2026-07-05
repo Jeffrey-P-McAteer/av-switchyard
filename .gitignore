@@ -2,7 +2,7 @@ bin
 build
 target
 out
-vm-data
+vm-data*
 dist
 
 # Windows-only resource file which must be at root of Go binary
