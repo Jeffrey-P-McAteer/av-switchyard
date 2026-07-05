@@ -5,44 +5,65 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>av-switchyard</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="positioning.css">
+  <link rel="stylesheet" href="gallery.css">
 </head>
 <body>
   <img id="banner" src="graphics/ai-banner.png" alt="AV Switchyard banner">
   <main>
-    <h1><code>av-switchyard</code></h1>
+    <h1><img src="graphics/icon-primary.svg" class="header-icon">av-switchyard</h1>
 
     <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
-    </p>
-    <p>
-      Lots of TODOs here, move along.
+      <code>av-switchyard</code> is a <i>primarially</i> command-line Go utility which performs the following capabilities
+      <ul>
+        <li><code>av-switchyard scan</code>
+          <ul>
+            <li>For every network interface, report all accessible machines and AV equipment.</li>
+          </ul>
+        </li>
+        <li><code>av-switchyard</code>
+          <ul>
+            <li>
+              With no arguments, or the optional explicit form <code>av-switchyard daemon</code>,
+              runs a server which reads the file <code>av-switchyard.toml</code> to connect ArtNet gear to grandMA3.
+            </li>
+          </ul>
+        </li>
+        <li><code>av-switchyard update [--upgrade-version=va.b.c]</code>
+          <ul>
+            <li>
+              Self-upgrade capability. Replaces the currently-running binary with the specified (or most recent)
+              version downloaded from the releases page at <a href="https://github.com/Jeffrey-P-McAteer/av-switchyard/releases">av-switchyard/releases</a>
+            </li>
+          </ul>
+        </li>
+      </ul>
     </p>
 
-<!--
-    <div class="card">
-        Download the latest release or browse the documentation.
-    </div> -->
+    <a href="https://github.com/Jeffrey-P-McAteer/av-switchyard/releases">
+      <div class="card">
+          Download the latest release
+      </div>
+    </a>
+
+    <a href="https://github.com/Jeffrey-P-McAteer/av-switchyard">
+      <div class="card">
+          Clone the source code
+      </div>
+    </a>
+
+    <section class="gallery">
+      <img class="gallery-image" src="historic-progress/2026-07-03-1783116703.png" alt="">
+
+      <button class="gallery-prev" aria-label="Previous image"></button>
+      <button class="gallery-next" aria-label="Next image"></button>
+
+      <div class="gallery-caption"></div>
+    </section>
 
   </main>
   <script src="dev-tools.js"></script>
+  <script src="gallery.js"></script>
   <script src="main.js"></script>
 </body>
 </html>

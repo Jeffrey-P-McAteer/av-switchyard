@@ -1,0 +1,8 @@
+/* Manually center the icon w/ text  */
+img.header-icon {
+  width: 96px;
+  height: 96px;
+  position: relative;
+  left: -10px;
+  top: 25px;
+}
