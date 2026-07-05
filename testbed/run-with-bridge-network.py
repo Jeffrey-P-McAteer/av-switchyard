@@ -40,15 +40,17 @@ if len(tap_names) < 1:
   sys.exit(1)
 
 pretty_cmd('sudo', 'ip', 'link', 'add', 'name', BRIDGE_NAME, 'type', 'bridge')
-pretty_cmd('sudo', 'ip', 'link', 'set', BRIDGE_NAME, 'up')
 
 for tap_name in tap_names:
   try:
-    pretty_cmd('sudo', 'ip', 'tuntap', 'add', 'dev', tap_name, 'mode', 'tap', 'user', f'{getpass.getuser()}')
+    #pretty_cmd('sudo', 'ip', 'tuntap', 'add', 'dev', tap_name, 'mode', 'tap', 'user', f'{getpass.getuser()}')
+    pretty_cmd('sudo', 'ip', 'tuntap', 'add', 'mode', 'tap', 'name', tap_name, 'user', f'{getpass.getuser()}')
     pretty_cmd('sudo', 'ip', 'link', 'set', tap_name, 'master', BRIDGE_NAME)
     pretty_cmd('sudo', 'ip', 'link', 'set', tap_name, 'up')
   except:
     traceback.print_exc()
+
+pretty_cmd('sudo', 'ip', 'link', 'set', BRIDGE_NAME, 'up')
 
 print(f'Network bridge {BRIDGE_NAME} with taps {",".join(tap_names)} setup')
 
