@@ -361,7 +361,7 @@ if len(os.environ.get('VM_TAP_NAME', '')) > 0:
   tap_name = os.environ.get('VM_TAP_NAME', '')
   av_bridge_qemu_args = [
     '-netdev', f'tap,id=net1,ifname={tap_name},script=no,downscript=no',
-    '-device', f'e1000,netdev=net1,mac={deterministic_mac(tap_name)}',
+    '-device', f'e1000,netdev=net1,mac={deterministic_mac(__file__)}',
   ]
 
 time.sleep(0.5) # idk cache nonsense after create_windows_drive
