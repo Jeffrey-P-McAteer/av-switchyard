@@ -288,7 +288,8 @@ pretty_cmd(
     *av_bridge_qemu_args,
     '-device',  'qemu-xhci',
     '-device',  'usb-tablet',
-    '-vga',     'std',
+    '-vga', 'none',
+    '-device', 'qxl-vga',
     '-display', 'gtk,gl=on',
 cwd=vm_data_folder)
 
