@@ -102,7 +102,7 @@ def ovmf_to_qemu_args(code_path: str):
     # Heuristic: if we have a VARS file use pflash mode (preferred)
     if vars_path:
         # Assume the vars file is immutable, copy to OS dir and send the modifiable copy to our args.
-        os_temp_dir_vars_file = os.path.join(tempfile.gettempdir(), 'av-switchyard-testbed-MA3-'+os.path.basename(vars_path))
+        os_temp_dir_vars_file = os.path.join(tempfile.gettempdir(), 'av-switchyard-testbed-DMX-'+os.path.basename(vars_path))
         if not os.path.exists(os_temp_dir_vars_file):
           shutil.copy(vars_path, os_temp_dir_vars_file)
         args += [
@@ -144,88 +144,6 @@ def get_folder_size(path, follow_symlinks=False):
 
     return total_size
 
-def create_windows_drive(source_dir, output_img, size_mb=-1):
-    if size_mb <= 0:
-      size_mb = int( (get_folder_size(source_dir) / 1_000_000.0) * 2.0 ) # 2x larger than the input folder.
-    if size_mb <= 64:
-      size_mb = 64 # if folder empty, bump size to some decent minimum.
-
-    source_dir = pathlib.Path(source_dir).resolve()
-    output_img = pathlib.Path(output_img).resolve()
-
-    if not source_dir.exists():
-        raise FileNotFoundError(source_dir)
-
-    if os.path.exists(output_img):
-      os.remove(output_img)
-
-    pretty_cmd('sync')
-
-    # 1. Create VHDX disk image (empty)
-    pretty_cmd(
-        'qemu-img', 'create',
-        '-f', 'raw',
-        str(output_img),
-        f'{size_mb}M'
-    )
-
-    # 2. Attach loop device
-    loop_dev = subprocess.check_output([
-        'sudo', 'losetup', '--find', '--show', str(output_img)
-    ]).decode().strip()
-    expected_partition_dev = loop_dev+'p1'
-
-    pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
-
-    print('Loop device:', loop_dev)
-
-    mount_dir = tempfile.mkdtemp(prefix='winimg_')
-
-    try:
-        pretty_cmd('sudo', 'parted', loop_dev, '--script', 'mklabel', 'gpt', 'mkpart', 'primary', 'fat32', '1MiB', '98%')
-
-        pretty_cmd('sync')
-        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
-
-        # 3. Create Windows-compatible filesystem
-        pretty_cmd('sudo', 'mkfs.vfat', '-F', '32', expected_partition_dev)
-
-        pretty_cmd('sync')
-        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
-
-        # 4. Mount it, with user perms
-        pretty_cmd('sudo', 'mount', '-o', f'uid={os.getuid()},gid={os.getgid()}', expected_partition_dev, mount_dir)
-
-        pretty_cmd('sync')
-        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
-
-        # 5. Copy files
-        pretty_cmd(
-            'rsync', '-a', '--info=progress2',
-            str(source_dir) + '/',
-            mount_dir + '/'
-        )
-
-        pretty_cmd('ls', '-alh', mount_dir)
-
-        pretty_cmd('sync')
-        pretty_cmd('sudo', 'blockdev', '--flushbufs', loop_dev)
-
-    finally:
-        # Cleanup
-        try:
-            pretty_cmd('sudo', 'umount', mount_dir)
-            pretty_cmd('sync')
-        except Exception:
-            pass
-
-        pretty_cmd('sudo', 'losetup', '-d', loop_dev)
-        pretty_cmd('sync')
-        shutil.rmtree(mount_dir)
-
-    print(f'Created Windows usb drive: {output_img}')
-    return output_img
-
 #################### MAIN ####################
 
 testbed_folder = os.path.dirname(os.path.realpath(__file__))
@@ -240,7 +158,7 @@ for b in req_bins:
   if shutil.which(b) is None:
     die(f'Cannot find required binary {b}, please install and ensure containing folder is on your $PATH')
 
-vm_data_folder = os.path.join(testbed_folder, 'vm-data-MA3')
+vm_data_folder = os.path.join(testbed_folder, 'vm-data-DMX-sim')
 os.makedirs(vm_data_folder, exist_ok=True)
 
 # Setup step 1: Do we have a windows 10 iso image to do initial install with?
@@ -248,19 +166,19 @@ os.makedirs(vm_data_folder, exist_ok=True)
 install_iso = glob_for_nonempty_file_fatal(
   vm_data_folder, '*.iso',
   f'''
-Please download a windows installer .iso file from a site such as
- - https://www.microsoft.com/en-us/software-download/windows10ISO
+Please download a Fedora installer .iso file from a site such as
+ - https://fedoraproject.org/kde/download/
 and place it under the folder {vm_data_folder}
 '''
 )
 
 # Step step 2: have a .qcow2 for the VM, we can do this ourselves with qemu-img
-vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*[wW]indows*.qcow2')
+vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*[fF]edora*.qcow2')
 if len(vm_qcow2s) > 1:
   die(f'We have found 2 or more VM hard drive files, please delete the one you do not plan to use! Discovered qcow2 files: {vm_qcow2s}')
 if len(vm_qcow2s) < 1:
   qemu_img_exe = shutil.which('qemu-img')
-  vm_qcow2 = os.path.join(vm_data_folder, 'Windows-Test-VM.qcow2') # Assignment: Default qcow2 name
+  vm_qcow2 = os.path.join(vm_data_folder, 'Fedora-Test-VM.qcow2') # Assignment: Default qcow2 name
   pretty_cmd(
     qemu_img_exe, 'create', '-f', 'qcow2', vm_qcow2, '120G',
     cwd=vm_data_folder
@@ -330,15 +248,6 @@ if not os.path.exists(vm_is_installed_flag_file):
 
 print(f'OS install is complete, we see the flag file {vm_is_installed_flag_file}')
 
-test_artifacts_folder = os.path.join(vm_data_folder, 'test-artifacts')
-os.makedirs(test_artifacts_folder, exist_ok=True)
-print()
-print(f'Note: Move test files into the folder {test_artifacts_folder}')
-print()
-
-test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.img')
-test_vm_disk_image = create_windows_drive(test_artifacts_folder, test_vm_disk_image)
-
 # If this bridge is up, connect to it for a shared multi-VM network LAN
 av_bridge_qemu_args = []
 av_bridge_name_txt_file = os.path.join(testbed_folder, 'av-bridge-network-name.txt')
@@ -353,18 +262,15 @@ if tap_name in subprocess.check_output(['ip', 'link', 'show'], text=True):
   ]
 
 
-time.sleep(0.5) # idk cache nonsense after create_windows_drive
-
 pretty_cmd(
   qemu_system_exe,
     '-enable-kvm',
-    '-m',       str(int(1024 * 16)), # 16gb ram - MA3 wants at least 8gb
+    '-m',       str(int(1024 * 12)), # 12gb ram - Presume blender to be less resource intensive
     '-smp',     '4',
     '-cpu',     'host',
     '-machine', 'q35',
     *ovmf_to_qemu_args(ovmf_code_fd_file),
     '-drive',   f'file={vm_qcow2},format=qcow2,if=ide',
-    '-drive',   f'file={test_vm_disk_image},format=raw,if=ide',
     '-netdev',  'user,id=net0',
     '-device',  'e1000,netdev=net0',
     *av_bridge_qemu_args,

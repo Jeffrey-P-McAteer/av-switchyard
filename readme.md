@@ -45,6 +45,8 @@ Design constraints:
     - Use `OVMF_CODE_FILE=/path/to/OVMF_CODE.fd` to override the automatic search under `/usr/share` - we do not hardcode paths which can be distro-specific.
     - Only supports simulating a Windows x64 VM and associated simulators for AV hardware (yet undetermined)
     - NOTE: Due to the increasing use of host-specific resources such as OpenGL and network-bridge setup, assume everything under `testbed/` can only be used on Linux machines.
+    - To run both VMs (presumed already-setup) and have a host TAP between them (simulating another ethernet switch connecting both machines) run
+      `./testbed/run-with-bridge-network.py ./testbed/setup-and-run-MA3-vm.py ./testbed/setup-and-run-DMX-sim-vm.py`
 
  - `historic-progress/`
     - Contains timestamped screenshots of the tool for future perspective on the development story
