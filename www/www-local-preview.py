@@ -96,6 +96,13 @@ class VirtualDirectoryHandler(http.server.SimpleHTTPRequestHandler):
 
         return sorted(urls)
 
+    def end_headers(self):
+        # Disable all client-side caching.
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")
+        self.send_header("Pragma", "no-cache")   # HTTP/1.0 clients
+        self.send_header("Expires", "0")
+        super().end_headers()
+
 
 def open_browser():
     webbrowser.open(f"http://localhost:{PORT}/")
