@@ -339,19 +339,15 @@ print()
 test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.img')
 test_vm_disk_image = create_windows_drive(test_artifacts_folder, test_vm_disk_image)
 
-# If this bridge is up, connect to it for a shared multi-VM network LAN
+# If VM_TAP_NAME is specified, connect to it for a shared multi-VM network LAN
 av_bridge_qemu_args = []
-av_bridge_name_txt_file = os.path.join(testbed_folder, 'av-bridge-network-name.txt')
-with open(av_bridge_name_txt_file, 'r') as fd:
-  bridge_name = fd.read().strip()
-tap_name = f'tap-{bridge_name}'
-if tap_name in subprocess.check_output(['ip', 'link', 'show'], text=True):
+if len(os.environ.get('VM_TAP_NAME', '')) > 0:
   # Must use net1, as net0 is declared as the default user-mode nic.
+  tap_name = os.environ.get('VM_TAP_NAME', '')
   av_bridge_qemu_args = [
     '-netdev', f'tap,id=net1,ifname={tap_name},script=no,downscript=no',
     '-device', 'e1000,netdev=net1',
   ]
-
 
 time.sleep(0.5) # idk cache nonsense after create_windows_drive
 
