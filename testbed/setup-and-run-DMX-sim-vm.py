@@ -181,19 +181,19 @@ os.makedirs(vm_data_folder, exist_ok=True)
 install_iso = glob_for_nonempty_file_fatal(
   vm_data_folder, '*.iso',
   f'''
-Please download a Fedora installer .iso file from a site such as
- - https://fedoraproject.org/kde/download/
+Please download an Ubuntu installer .iso file from a site such as
+ - https://releases.ubuntu.com/noble/
 and place it under the folder {vm_data_folder}
 '''
 )
 
 # Step step 2: have a .qcow2 for the VM, we can do this ourselves with qemu-img
-vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*[fF]edora*.qcow2')
+vm_qcow2s = glob_for_nonempty_files(vm_data_folder, '*[uU]buntu*.qcow2')
 if len(vm_qcow2s) > 1:
   die(f'We have found 2 or more VM hard drive files, please delete the one you do not plan to use! Discovered qcow2 files: {vm_qcow2s}')
 if len(vm_qcow2s) < 1:
   qemu_img_exe = shutil.which('qemu-img')
-  vm_qcow2 = os.path.join(vm_data_folder, 'Fedora-Test-VM.qcow2') # Assignment: Default qcow2 name
+  vm_qcow2 = os.path.join(vm_data_folder, 'Ubuntu-Test-VM.qcow2') # Assignment: Default qcow2 name
   pretty_cmd(
     qemu_img_exe, 'create', '-f', 'qcow2', vm_qcow2, '120G',
     cwd=vm_data_folder
@@ -290,7 +290,7 @@ pretty_cmd(
     '-device',  'usb-tablet',
     '-vga', 'none',
     '-device', 'qxl-vga',
-    '-display', 'gtk,gl=on',
+    '-display', 'gtk,gl=on,show-menubar=off',
 cwd=vm_data_folder)
 
 

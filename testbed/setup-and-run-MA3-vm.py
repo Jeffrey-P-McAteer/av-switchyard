@@ -383,7 +383,7 @@ pretty_cmd(
     '-device',  'usb-tablet',
     '-vga', 'none',
     '-device', 'qxl-vga',
-    '-display', 'gtk,gl=on',
+    '-display', 'gtk,gl=on,show-menubar=off',
 cwd=vm_data_folder)
 
 
