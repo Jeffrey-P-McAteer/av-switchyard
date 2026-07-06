@@ -65,13 +65,14 @@ func RunScan(c *cli.CLI) error {
     }
 
     var (
-        wg            sync.WaitGroup
-        mu            sync.Mutex
-        artnetReports []*InterfaceReport
+        wg              sync.WaitGroup
+        mu              sync.Mutex
+        artnetReports   []*InterfaceReport
+        portScanReports []*SubnetScanReport
     )
 
     for _, ni := range ifaces {
-        wg.Add(1)
+        wg.Add(2)
         go func(ni netInfo) {
             defer wg.Done()
             r := scanInterface(ni, timeout)
@@ -82,13 +83,24 @@ func RunScan(c *cli.CLI) error {
             artnetReports = append(artnetReports, r)
             mu.Unlock()
         }(ni)
+        go func(ni netInfo) {
+            defer wg.Done()
+            r := portScanSubnet(ni, portScanConnTimeout)
+            if !noDNS {
+                resolvePortScanHostnames(r.Hosts)
+            }
+            mu.Lock()
+            portScanReports = append(portScanReports, r)
+            mu.Unlock()
+        }(ni)
     }
     wg.Wait()
 
     sort.Slice(artnetReports, func(i, j int) bool { return artnetReports[i].Name < artnetReports[j].Name })
+    sort.Slice(portScanReports, func(i, j int) bool { return portScanReports[i].Interface < portScanReports[j].Interface })
 
     if asJSON {
-        full := FullReport{OSInterfaces: osReports, ArtNetScan: artnetReports}
+        full := FullReport{OSInterfaces: osReports, ArtNetScan: artnetReports, PortScan: portScanReports}
         enc := json.NewEncoder(os.Stdout)
         enc.SetIndent("", "  ")
         if err := enc.Encode(full); err != nil {
@@ -106,6 +118,7 @@ func RunScan(c *cli.CLI) error {
         os.Exit(1)
     }
     printTextReport(artnetReports)
+    printPortScanReport(portScanReports)
 
     return nil
 }
@@ -469,8 +482,292 @@ type InterfaceReport struct {
 
 // FullReport is the top-level JSON envelope combining both report types.
 type FullReport struct {
-    OSInterfaces []*OSInterfaceReport `json:"os_interfaces"`
-    ArtNetScan   []*InterfaceReport   `json:"artnet_scan"`
+    OSInterfaces []*OSInterfaceReport  `json:"os_interfaces"`
+    ArtNetScan   []*InterfaceReport    `json:"artnet_scan"`
+    PortScan     []*SubnetScanReport   `json:"port_scan,omitempty"`
+}
+
+// ---------------------------------------------------------------------------
+// Port scan types
+// ---------------------------------------------------------------------------
+
+// portDef names one well-known port used by AV / broadcast equipment.
+// Protocol is the primary transport; every port is also probed via TCP.
+type portDef struct {
+    Port     int
+    Protocol string // "tcp" or "udp" — informational; TCP connect is always used
+    Service  string
+}
+
+// OpenPort is one confirmed-open TCP port found during a host scan.
+type OpenPort struct {
+    Port    int    `json:"port"`
+    Service string `json:"service"`
+}
+
+// ScannedHost is one live host found during a subnet port scan.
+type ScannedHost struct {
+    IP        string     `json:"ip"`
+    Hostname  string     `json:"hostname,omitempty"`
+    MAC       string     `json:"mac,omitempty"`
+    OpenPorts []OpenPort `json:"open_ports"`
+}
+
+// SubnetScanReport collects port-scan results for one NIC's subnet.
+type SubnetScanReport struct {
+    Interface string         `json:"interface"`
+    Subnet    string         `json:"subnet"`
+    Hosts     []*ScannedHost `json:"hosts"`
+    Note      string         `json:"note,omitempty"`
+    Error     string         `json:"error,omitempty"`
+}
+
+// avServicePorts is the ~200-entry catalogue of ports commonly found on AV and
+// broadcast equipment.  UDP-primary entries are noted as such and are still
+// probed via TCP so that devices sharing a port number on both transports are
+// detected without requiring raw-socket privileges.
+var avServicePorts = []portDef{
+    // ── Standard infrastructure ───────────────────────────────────────────
+    {21,    "tcp", "FTP"},
+    {22,    "tcp", "SSH"},
+    {23,    "tcp", "Telnet"},
+    {25,    "tcp", "SMTP"},
+    {53,    "tcp", "DNS"},
+    {80,    "tcp", "HTTP"},
+    {110,   "tcp", "POP3"},
+    {111,   "tcp", "RPC-Portmapper"},
+    {123,   "udp", "NTP"},
+    {135,   "tcp", "MS-RPC"},
+    {139,   "tcp", "NetBIOS-SSN"},
+    {143,   "tcp", "IMAP"},
+    {161,   "udp", "SNMP"},
+    {162,   "udp", "SNMP-Trap"},
+    {389,   "tcp", "LDAP"},
+    {427,   "udp", "SLP"},
+    {443,   "tcp", "HTTPS"},
+    {445,   "tcp", "SMB"},
+    {500,   "udp", "IKE-ISAKMP"},
+    {502,   "tcp", "Modbus-TCP"},
+    {514,   "udp", "Syslog"},
+    {520,   "udp", "RIPv1"},
+    {548,   "tcp", "AFP"},
+    {554,   "tcp", "RTSP"},
+    {623,   "udp", "IPMI-RMCP"},
+    {3306,  "tcp", "MySQL"},
+    {3389,  "tcp", "RDP"},
+    {5432,  "tcp", "PostgreSQL"},
+    {5900,  "tcp", "VNC"},
+    {5901,  "tcp", "VNC-Display1"},
+    {5902,  "tcp", "VNC-Display2"},
+    // ── IEEE 1588 Precision Time Protocol ────────────────────────────────
+    {179,   "tcp", "BGP"},
+    {319,   "udp", "PTP-Event-IEEE1588"},
+    {320,   "udp", "PTP-General-IEEE1588"},
+    // ── AV lighting / DMX / stage control ────────────────────────────────
+    {1024,  "tcp", "ShowXpress"},
+    {2323,  "tcp", "Pharos-Telnet"},
+    {2430,  "tcp", "Pharos"},
+    {3000,  "tcp", "Pharos-Alt"},
+    {3007,  "udp", "ESP-Net-DMX"},
+    {3030,  "tcp", "Adamson-Blueprint"},
+    {3032,  "tcp", "ETC-EOS"},
+    {3033,  "udp", "ETC-EOS-OSC"},
+    {3034,  "tcp", "ETC-EOS-Alt"},
+    {3036,  "udp", "ETC-EOS-OSC-Alt"},
+    {3037,  "tcp", "ETC-EOS-TCP-Alt"},
+    {3039,  "tcp", "Dataton-WATCHOUT"},
+    {3040,  "tcp", "WATCHOUT-Alt"},
+    {3197,  "tcp", "MADRIX"},
+    {3333,  "tcp", "ENTTEC-ODE"},
+    {3938,  "tcp", "MA-Net3-Alt"},
+    {4543,  "tcp", "Pharos-Designer-Alt"},
+    {4703,  "tcp", "Avolites-TitanNet"},
+    {5401,  "tcp", "disguise-d3"},
+    {5568,  "udp", "sACN-E1.31"},
+    {6038,  "tcp", "grandMA3-Remote"},
+    {6160,  "tcp", "Hippotizer"},
+    {6200,  "tcp", "Martin-M-PC"},
+    {6454,  "udp", "Art-Net"},
+    {6549,  "tcp", "grandMA-Net"},
+    {6553,  "tcp", "ChamSys-MagicQ"},
+    {6600,  "tcp", "Pathport"},
+    {6699,  "tcp", "grandMA3"},
+    {6790,  "tcp", "Pharos-Designer"},
+    {7600,  "tcp", "Pandoras-Box"},
+    {8595,  "tcp", "grandMA-Web"},
+    {9090,  "tcp", "OLA-Web"},
+    {9119,  "tcp", "Chauvet-LuminAir"},
+    {9898,  "tcp", "WATCHOUT-Display"},
+    {9999,  "tcp", "QLC+"},
+    {38423, "tcp", "Unreal-nDisplay"},
+    {57120, "tcp", "SuperCollider-OSC"},
+    // ── OSC / generic AV control ──────────────────────────────────────────
+    {1234,  "tcp", "VLC-QLC+"},
+    {7000,  "tcp", "Resolume-OSC"},
+    {8000,  "tcp", "OSC-Generic"},
+    {9000,  "tcp", "SRT-OSC-Christie"},
+    // ── Dante / AES67 audio networking ───────────────────────────────────
+    {4440,  "udp", "Dante-ARC"},
+    {4455,  "udp", "Dante-ARC-Alt"},
+    {5004,  "udp", "RTP-AES67"},
+    {5005,  "udp", "RTCP"},
+    {8700,  "udp", "Dante-Controller"},
+    {8701,  "udp", "Dante-Controller-Alt"},
+    {8702,  "udp", "Dante-Controller-Alt2"},
+    {8703,  "udp", "Dante-Controller-Alt3"},
+    {14336, "udp", "Dante-Audio"},
+    {14337, "udp", "Dante-Audio-Alt"},
+    {51000, "udp", "Dante-Discovery"},
+    // ── NDI (NewTek Network Device Interface) ─────────────────────────────
+    {5353,  "udp", "mDNS-Bonjour"},
+    {5355,  "udp", "LLMNR"},
+    {5959,  "tcp", "NDI-Discovery"},
+    {5960,  "tcp", "NDI-Video"},
+    {5961,  "tcp", "NDI-Video-Alt"},
+    {5962,  "tcp", "NDI-Audio"},
+    {5963,  "tcp", "NDI-Meta"},
+    // ── NMOS / AMWA IS-04/05/06 ───────────────────────────────────────────
+    {3211,  "tcp", "NMOS-IS04-Reg"},
+    {3212,  "tcp", "NMOS-IS05"},
+    {3213,  "tcp", "NMOS-IS06"},
+    // ── Video streaming / broadcast ───────────────────────────────────────
+    {1720,  "tcp", "H.323-Ctrl"},
+    {1793,  "udp", "EtherSound"},
+    {1794,  "udp", "sACN-Unicast"},
+    {1900,  "udp", "SSDP-UPnP"},
+    {1935,  "tcp", "RTMP"},
+    {3478,  "udp", "STUN-TURN"},
+    {3479,  "udp", "STUN-Alt"},
+    {3702,  "udp", "WSD"},
+    {6100,  "tcp", "Vizrt-Engine"},
+    {8092,  "tcp", "Ross-Xpression"},
+    {8554,  "tcp", "RTSP-Alt"},
+    {32400, "tcp", "Plex-Media"},
+    {51400, "tcp", "Plex-DLNA"},
+    // ── AV control systems ────────────────────────────────────────────────
+    {1319,  "tcp", "AMX-ICSP"},
+    {1702,  "tcp", "QSC-Q-SYS"},
+    {1710,  "tcp", "QSC-Q-SYS-Alt"},
+    {1718,  "udp", "AMX-Beacon"},
+    {1883,  "tcp", "MQTT"},
+    {1902,  "udp", "SDDP"},
+    {2001,  "tcp", "Extron-SIS"},
+    {2050,  "tcp", "GrassValley-GVOrbit"},
+    {2101,  "tcp", "dB-ArrayCalc"},
+    {3283,  "tcp", "Apple-ARD"},
+    {3671,  "udp", "KNX-EIBnet"},
+    {4352,  "tcp", "PJLink"},
+    {4840,  "tcp", "OPC-UA"},
+    {4999,  "tcp", "AMX-ICSP-Alt"},
+    {5000,  "tcp", "Pathway-Kramer-AJA"},
+    {5001,  "tcp", "RGB-Spectrum"},
+    {5678,  "tcp", "Ventuz"},
+    {6107,  "tcp", "Lightware-LW2"},
+    {7142,  "tcp", "TV-One"},
+    {7474,  "tcp", "ATEN-Web"},
+    {7788,  "tcp", "Ross-Video"},
+    {8880,  "tcp", "L-ISA"},
+    {9001,  "tcp", "Riedel-MediorNet"},
+    {9600,  "tcp", "Calrec-Brio"},
+    {9993,  "tcp", "Blackmagic-Videohub"},
+    {10001, "tcp", "Biamp-Lightware"},
+    {10002, "tcp", "BSS-London"},
+    {10003, "tcp", "BSS-London-Alt"},
+    {10010, "tcp", "Catalyst-Media"},
+    {41794, "tcp", "Crestron-CIP"},
+    {41796, "tcp", "Crestron-CIP-Secure"},
+    {47808, "udp", "BACnet-IP"},
+    // ── Displays / projectors ─────────────────────────────────────────────
+    {3629,  "tcp", "Epson-Projector"},
+    {9110,  "tcp", "Epson-Projector-Net"},
+    // ── Yamaha / DJ equipment / music production ──────────────────────────
+    {49280, "tcp", "Yamaha-SCP"},
+    {50000, "tcp", "Yamaha-MC-ProDJLink"},
+    {50001, "tcp", "ProDJLink"},
+    {50002, "tcp", "ProDJLink-Alt"},
+    // ── Blackmagic Design / AJA ───────────────────────────────────────────
+    {7770,  "tcp", "AJA-KiPro"},
+    {52381, "tcp", "Blackmagic-ATEM"},
+    // ── Network audio production ──────────────────────────────────────────
+    {1400,  "tcp", "Sonos"},
+    {2048,  "udp", "DigiNet"},
+    {3689,  "tcp", "DAAP-iTunes"},
+    {4001,  "tcp", "Luminex-GigaCore"},
+    {4004,  "tcp", "Luminex-Alt"},
+    {4569,  "udp", "IAX2-VoIP"},
+    {5060,  "tcp", "SIP"},
+    {5061,  "tcp", "SIP-TLS"},
+    {8001,  "tcp", "SSL-Network"},
+    {8088,  "tcp", "Waves-Server"},
+    {49000, "tcp", "Sonos-Discovery"},
+    {51325, "tcp", "Allen-Heath-SQ"},
+    // ── Remote access / admin ────────────────────────────────────────────
+    {2222,  "tcp", "SSH-Alt"},
+    {5555,  "tcp", "ADB-Generic"},
+    {5938,  "tcp", "TeamViewer"},
+    {7070,  "tcp", "AnyDesk"},
+    // ── HTTP / web management interfaces ─────────────────────────────────
+    {8008,  "tcp", "Chromecast-HTTP"},
+    {8080,  "tcp", "HTTP-Alt"},
+    {8081,  "tcp", "HTTP-Alt"},
+    {8096,  "tcp", "Jellyfin-Emby"},
+    {8099,  "tcp", "ArKaos-MediaMaster"},
+    {8180,  "tcp", "HTTP-Alt"},
+    {8181,  "tcp", "HTTP-Alt"},
+    {8443,  "tcp", "HTTPS-Alt"},
+    {7443,  "tcp", "HTTPS-Alt"},
+    {8888,  "tcp", "HTTP-Alt"},
+    {8920,  "tcp", "Jellyfin-TLS"},
+    {9002,  "tcp", "HTTP-Alt"},
+    {9003,  "tcp", "HTTP-Alt"},
+    {9100,  "tcp", "RAW-Print"},
+    {9030,  "tcp", "NMOS-Alt"},
+    {10080, "tcp", "HTTP-Alt"},
+    {10100, "tcp", "HTTP-Alt"},
+    // ── Miscellaneous AV / generic ────────────────────────────────────────
+    {4000,  "tcp", "Clear-Com"},
+    {4444,  "tcp", "Generic-Control"},
+    {4500,  "udp", "IPsec-NAT-T"},
+    {4789,  "udp", "VXLAN"},
+    {4800,  "tcp", "Pixera-Generic"},
+    {5100,  "tcp", "HTTP-Alt"},
+    {5200,  "tcp", "HTTP-Alt"},
+    {5800,  "tcp", "VNC-HTTP"},
+    {6000,  "tcp", "X11"},
+    {6001,  "tcp", "X11-Display1"},
+    {6633,  "tcp", "OpenFlow"},
+    {6666,  "tcp", "Generic-AV"},
+    {11000, "tcp", "Generic-AV"},
+    {30010, "tcp", "Pixera-Alt"},
+    {38000, "tcp", "Pixera-Server"},
+    {49152, "tcp", "UPnP-Dynamic"},
+}
+
+// tcpScanPorts is the deduplicated, sorted list of TCP port numbers derived
+// from avServicePorts.  Built once at init time.
+var tcpScanPorts []int
+
+// portServiceName maps port number → service label from avServicePorts.
+var portServiceName map[int]string
+
+func init() {
+    portServiceName = make(map[int]string, len(avServicePorts))
+    seenName := make(map[int]bool, len(avServicePorts))
+    seenTCP := make(map[int]bool, len(avServicePorts))
+    for _, pd := range avServicePorts {
+        if !seenName[pd.Port] {
+            seenName[pd.Port] = true
+            portServiceName[pd.Port] = pd.Service
+        }
+        // Only TCP-scan ports marked "tcp". Pure-UDP ports (Art-Net, sACN,
+        // Dante, mDNS…) would produce false-positives because net.DialTimeout
+        // on UDP always "connects" — UDP has no handshake to refuse.
+        if pd.Protocol == "tcp" && !seenTCP[pd.Port] {
+            seenTCP[pd.Port] = true
+            tcpScanPorts = append(tcpScanPorts, pd.Port)
+        }
+    }
+    sort.Ints(tcpScanPorts)
 }
 
 // netInfo is the subset of interface data needed to run a scan.
@@ -794,6 +1091,258 @@ func printTextReport(reports []*InterfaceReport) {
                 for _, p := range n.Ports {
                     fmt.Printf("    [%d] %-6s  protocol=%-8s universe=%-5d (net=%d sub=%d sw=%d) status=%s\n",
                         p.Index, p.Direction, p.Protocol, p.Universe, p.Net, p.SubNet, p.SwOffset, p.Status)
+                }
+            }
+        }
+    }
+    fmt.Println()
+}
+
+// ---------------------------------------------------------------------------
+// Port scan implementation
+// ---------------------------------------------------------------------------
+
+const (
+    portScanWorkers    = 1024           // max concurrent TCP dial goroutines
+    portScanConnTimeout = 300 * time.Millisecond
+    portScanMaxHosts   = 2048           // guard against accidentally scanning huge subnets
+)
+
+// subnetHosts returns all usable host IPs in ni's subnet, excluding our own
+// address, the network address, and the broadcast address.
+func subnetHosts(ni netInfo) []net.IP {
+    ones, bits := ni.IPNet.Mask.Size()
+    if bits != 32 {
+        return nil
+    }
+    total := uint32(1) << uint(bits-ones)
+    if total <= 2 {
+        return nil // /31 or /32 — no conventional host range
+    }
+
+    networkU := ipToUint32(ni.IP) & ipToUint32(net.IP(ni.IPNet.Mask))
+    selfU := ipToUint32(ni.IP)
+    broadcastU := networkU | ^ipToUint32(net.IP(ni.IPNet.Mask))
+
+    var hosts []net.IP
+    for i := uint32(1); i < total-1; i++ {
+        u := networkU + i
+        if u == selfU || u == broadcastU {
+            continue
+        }
+        hosts = append(hosts, uint32ToIP(u))
+    }
+    return hosts
+}
+
+// portScanSubnet probes every host in ni's subnet via TCP connect on all
+// ports listed in avServicePorts.  It returns a SubnetScanReport with the
+// live hosts and their open ports.
+func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
+    r := &SubnetScanReport{
+        Interface: ni.Name,
+        Subnet:    ni.IPNet.String(),
+    }
+
+    hosts := subnetHosts(ni)
+    if len(hosts) == 0 {
+        r.Note = "no scannable hosts in subnet (prefix too small)"
+        return r
+    }
+    if len(hosts) > portScanMaxHosts {
+        r.Note = fmt.Sprintf("subnet has %d hosts; scanning first %d only", len(hosts), portScanMaxHosts)
+        hosts = hosts[:portScanMaxHosts]
+    }
+
+    type hit struct {
+        ip   string
+        port int
+    }
+
+    hits := make(chan hit, 4096)
+    sem := make(chan struct{}, portScanWorkers)
+    var wg sync.WaitGroup
+
+    for _, ip := range hosts {
+        ipStr := ip.String()
+        for _, port := range tcpScanPorts {
+            wg.Add(1)
+            go func(ipStr string, port int) {
+                defer wg.Done()
+                sem <- struct{}{}
+                defer func() { <-sem }()
+                conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ipStr, port), connTimeout)
+                if err == nil {
+                    conn.Close()
+                    hits <- hit{ipStr, port}
+                }
+            }(ipStr, port)
+        }
+    }
+
+    go func() {
+        wg.Wait()
+        close(hits)
+    }()
+
+    hostMap := make(map[string][]OpenPort)
+    for h := range hits {
+        hostMap[h.ip] = append(hostMap[h.ip], OpenPort{
+            Port:    h.port,
+            Service: portServiceName[h.port],
+        })
+    }
+
+    // Resolve MACs from the OS ARP cache (populated as a side-effect of TCP connects).
+    arpTable := readARPTable()
+
+    for ip, ports := range hostMap {
+        sort.Slice(ports, func(i, j int) bool { return ports[i].Port < ports[j].Port })
+        r.Hosts = append(r.Hosts, &ScannedHost{
+            IP:        ip,
+            MAC:       arpTable[ip],
+            OpenPorts: ports,
+        })
+    }
+
+    sort.Slice(r.Hosts, func(i, j int) bool {
+        return ipToUint32(net.ParseIP(r.Hosts[i].IP)) < ipToUint32(net.ParseIP(r.Hosts[j].IP))
+    })
+
+    return r
+}
+
+// resolvePortScanHostnames performs best-effort reverse DNS on scanned hosts.
+func resolvePortScanHostnames(hosts []*ScannedHost) {
+    if len(hosts) == 0 {
+        return
+    }
+    var wg sync.WaitGroup
+    for _, h := range hosts {
+        wg.Add(1)
+        go func(h *ScannedHost) {
+            defer wg.Done()
+            ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+            defer cancel()
+            names, err := net.DefaultResolver.LookupAddr(ctx, h.IP)
+            if err == nil && len(names) > 0 {
+                h.Hostname = strings.TrimSuffix(names[0], ".")
+            }
+        }(h)
+    }
+    wg.Wait()
+}
+
+// readARPTable returns a map of IPv4 address → MAC address string by reading
+// the OS ARP cache.  It tries /proc/net/arp on Linux first, then falls back
+// to parsing `arp -a` output (works on Linux, macOS, and Windows).
+func readARPTable() map[string]string {
+    result := make(map[string]string)
+
+    // Linux fast path.
+    if data, err := os.ReadFile("/proc/net/arp"); err == nil {
+        for _, line := range strings.Split(string(data), "\n")[1:] {
+            f := strings.Fields(line)
+            if len(f) >= 4 && f[3] != "00:00:00:00:00:00" {
+                result[f[0]] = f[3]
+            }
+        }
+        return result
+    }
+
+    // Cross-platform fallback via arp -a.
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+    out, err := exec.CommandContext(ctx, "arp", "-a").Output()
+    if err != nil {
+        return result
+    }
+
+    for _, line := range strings.Split(string(out), "\n") {
+        line = strings.TrimSpace(line)
+        var ip, mac string
+
+        if idx := strings.Index(line, "("); idx >= 0 {
+            // Unix: ? (192.168.1.1) at aa:bb:cc:dd:ee:ff [ether] on eth0
+            end := strings.Index(line, ")")
+            if end > idx {
+                ip = line[idx+1 : end]
+            }
+            if at := strings.Index(line, " at "); at >= 0 {
+                rest := strings.Fields(line[at+4:])
+                if len(rest) > 0 {
+                    mac = rest[0]
+                }
+            }
+        } else {
+            // Windows: 192.168.1.1     00-aa-bb-cc-dd-ee     dynamic
+            f := strings.Fields(line)
+            if len(f) >= 2 {
+                ip = f[0]
+                mac = f[1]
+            }
+        }
+
+        mac = strings.ReplaceAll(mac, "-", ":")
+        if ip != "" && len(mac) >= 11 &&
+            mac != "ff:ff:ff:ff:ff:ff" && mac != "00:00:00:00:00:00" {
+            result[ip] = mac
+        }
+    }
+    return result
+}
+
+func printPortScanReport(reports []*SubnetScanReport) {
+    totalHosts := 0
+    for _, r := range reports {
+        totalHosts += len(r.Hosts)
+    }
+    fmt.Printf("\nPort Scan Report (%d TCP ports probed, %d ports catalogued): %d live host(s) across %d interface(s)\n",
+        len(tcpScanPorts), len(avServicePorts), totalHosts, len(reports))
+    fmt.Println(strings.Repeat("=", 72))
+
+    for _, r := range reports {
+        fmt.Printf("\nInterface: %s  subnet %s\n", r.Interface, r.Subnet)
+        if r.Note != "" {
+            fmt.Printf("  Note: %s\n", r.Note)
+        }
+        if r.Error != "" {
+            fmt.Printf("  Error: %s\n", r.Error)
+            continue
+        }
+        if len(r.Hosts) == 0 {
+            fmt.Println("  No responsive hosts found.")
+            continue
+        }
+
+        for _, h := range r.Hosts {
+            fmt.Println("  " + strings.Repeat("-", 68))
+            mac := h.MAC
+            if mac == "" {
+                mac = "(MAC unavailable)"
+            }
+            host := h.Hostname
+            if host == "" {
+                host = "(no reverse DNS)"
+            }
+            fmt.Printf("  Host:     %s\n", h.IP)
+            fmt.Printf("  MAC:      %s\n", mac)
+            fmt.Printf("  Hostname: %s\n", host)
+            if len(h.OpenPorts) == 0 {
+                fmt.Println("  Ports:    none open")
+            } else {
+                fmt.Printf("  Open ports (%d):\n", len(h.OpenPorts))
+                for _, p := range h.OpenPorts {
+                    svc := p.Service
+                    proto := "tcp"
+                    // Surface the declared protocol for informational context.
+                    for _, pd := range avServicePorts {
+                        if pd.Port == p.Port {
+                            proto = pd.Protocol
+                            break
+                        }
+                    }
+                    fmt.Printf("    %5d/%-3s  %s\n", p.Port, proto, svc)
                 }
             }
         }
