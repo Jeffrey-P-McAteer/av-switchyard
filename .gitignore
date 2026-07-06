@@ -4,6 +4,7 @@ target
 out
 vm-data*
 dist
+/av-switchyard/av-switchyard
 
 # Windows-only resource file which must be at root of Go binary
 rsrc.syso
