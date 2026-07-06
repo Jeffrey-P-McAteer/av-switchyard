@@ -1159,6 +1159,10 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
         port int
     }
 
+    // Launch UDP discovery in parallel with the TCP scan.
+    udpDone := make(chan map[string][]OpenPort, 1)
+    go func() { udpDone <- udpDiscoverSubnet(ni) }()
+
     hits := make(chan hit, 4096)
     sem := make(chan struct{}, portScanWorkers)
     var wg sync.WaitGroup
@@ -1185,18 +1189,33 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
         close(hits)
     }()
 
-    hostMap := make(map[string][]OpenPort)
+    tcpHostMap := make(map[string][]OpenPort)
     for h := range hits {
-        hostMap[h.ip] = append(hostMap[h.ip], OpenPort{
+        tcpHostMap[h.ip] = append(tcpHostMap[h.ip], OpenPort{
             Port:    h.port,
             Service: portServiceName[h.port],
         })
     }
 
+    // Wait for UDP discovery to finish, then merge with TCP results.
+    udpMap := <-udpDone
+
+    // Build per-IP port list combining both sources.
+    allIPs := make(map[string]struct{})
+    for ip := range tcpHostMap {
+        allIPs[ip] = struct{}{}
+    }
+    for ip := range udpMap {
+        allIPs[ip] = struct{}{}
+    }
+
     // Resolve MACs from the OS ARP cache (populated as a side-effect of TCP connects).
     arpTable := readARPTable()
 
-    for ip, ports := range hostMap {
+    for ip := range allIPs {
+        var ports []OpenPort
+        ports = append(ports, tcpHostMap[ip]...)
+        ports = append(ports, udpMap[ip]...)
         sort.Slice(ports, func(i, j int) bool { return ports[i].Port < ports[j].Port })
         r.Hosts = append(r.Hosts, &ScannedHost{
             IP:        ip,
@@ -1297,8 +1316,8 @@ func printPortScanReport(reports []*SubnetScanReport) {
     for _, r := range reports {
         totalHosts += len(r.Hosts)
     }
-    fmt.Printf("\nPort Scan Report (%d TCP ports probed, %d ports catalogued): %d live host(s) across %d interface(s)\n",
-        len(tcpScanPorts), len(avServicePorts), totalHosts, len(reports))
+    fmt.Printf("\nPort Scan Report (%d TCP ports + UDP probes [mDNS/SSDP/SNMP/NTP]): %d live host(s) across %d interface(s)\n",
+        len(tcpScanPorts), totalHosts, len(reports))
     fmt.Println(strings.Repeat("=", 72))
 
     for _, r := range reports {
