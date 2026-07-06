@@ -10,7 +10,7 @@ import (
 
 // printScanPlan prints the per-interface strategy and estimated duration
 // before scans start, so the operator knows what to expect on large networks.
-func printScanPlan(ifaces []netInfo) {
+func printScanPlan(ifaces []netInfo, opts ScanOptions) {
 	fmt.Println("Scan Strategy & Estimated Duration")
 	fmt.Println(strings.Repeat("=", 72))
 
@@ -27,8 +27,8 @@ func printScanPlan(ifaces []netInfo) {
 
 		if n <= discoverPhaseSmallMax {
 			// Full scan of all hosts.
-			tcpBatches := ceilDiv(n*len(tcpScanPorts), portScanWorkers)
-			tcpTime := time.Duration(tcpBatches) * portScanConnTimeout
+			tcpBatches := ceilDiv(n*len(tcpScanPorts), opts.Workers)
+			tcpTime := time.Duration(tcpBatches) * opts.PortTimeout
 			est = tcpTime
 			if udpDiscoveryTimeout > est {
 				est = udpDiscoveryTimeout
@@ -36,10 +36,10 @@ func printScanPlan(ifaces []netInfo) {
 			strategy = "full scan"
 		} else {
 			// Two-phase: discovery then port-scan live hosts.
-			discBatches := ceilDiv(n*len(quickDiscoveryPorts), portScanWorkers)
-			discTime := time.Duration(discBatches) * discoverConnTimeout
-			if arpSprayWait > discTime {
-				discTime = arpSprayWait
+			discBatches := ceilDiv(n*len(quickDiscoveryPorts), opts.Workers)
+			discTime := time.Duration(discBatches) * opts.DiscoverTimeout
+			if opts.ArpWait > discTime {
+				discTime = opts.ArpWait
 			}
 			// Assume ~5 % live hosts (conservative for AV networks).
 			estLive := n / 20
@@ -49,8 +49,8 @@ func printScanPlan(ifaces []netInfo) {
 			if estLive > 500 {
 				estLive = 500
 			}
-			scanBatches := ceilDiv(estLive*len(tcpScanPorts), portScanWorkers)
-			scanTime := time.Duration(scanBatches) * portScanConnTimeout
+			scanBatches := ceilDiv(estLive*len(tcpScanPorts), opts.Workers)
+			scanTime := time.Duration(scanBatches) * opts.PortTimeout
 			if udpDiscoveryTimeout > scanTime {
 				scanTime = udpDiscoveryTimeout
 			}

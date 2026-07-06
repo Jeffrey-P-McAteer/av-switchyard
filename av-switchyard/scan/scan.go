@@ -38,12 +38,28 @@ func RunScan(c *cli.CLI) error {
 	log.Printf("config file: %v\n", c.ConfigFile)
 
 	var (
-		timeout    = 5 * time.Second
+		timeout    = 5 * time.Second // Art-Net broadcast listen window
 		ifaceName  = ""
 		asJSON     = false
 		noDNS      = false
 		noOSReport = false
 	)
+
+	// Build scan options from CLI flags, falling back to defaults for any
+	// zero values (e.g. if the flag was not supplied).
+	opts := DefaultScanOptions()
+	if c.ScanDiscoverTimeout > 0 {
+		opts.DiscoverTimeout = c.ScanDiscoverTimeout
+	}
+	if c.ScanPortTimeout > 0 {
+		opts.PortTimeout = c.ScanPortTimeout
+	}
+	if c.ScanArpWait > 0 {
+		opts.ArpWait = c.ScanArpWait
+	}
+	if c.ScanWorkers > 0 {
+		opts.Workers = c.ScanWorkers
+	}
 
 	var (
 		osReports []*OSInterfaceReport
@@ -85,7 +101,7 @@ func RunScan(c *cli.CLI) error {
 			fmt.Fprintln(os.Stderr, "no eligible IPv4 network interfaces found for scanning")
 			os.Exit(1)
 		}
-		printScanPlan(ifaces)
+		printScanPlan(ifaces, opts)
 	}
 
 	var (
@@ -109,7 +125,7 @@ func RunScan(c *cli.CLI) error {
 		}(ni)
 		go func(ni netInfo) {
 			defer wg.Done()
-			r := portScanSubnet(ni, portScanConnTimeout)
+			r := portScanSubnet(ni, opts)
 			if !noDNS {
 				resolvePortScanHostnames(r.Hosts)
 			}
