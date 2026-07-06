@@ -1175,8 +1175,10 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
     }
 
     // UDP discovery (mDNS/SSDP/SNMP/NTP) runs the whole time in the background.
+    // Pass the already-capped hosts slice so probeSNMP/probeNTP never independently
+    // re-enumerate the full subnet.
     udpDone := make(chan map[string][]OpenPort, 1)
-    go func() { udpDone <- udpDiscoverSubnet(ni) }()
+    go func() { udpDone <- udpDiscoverSubnet(ni, hosts) }()
 
     // ── Host-discovery phase (skipped for small subnets) ──────────────────
     hostsToScan := hosts
@@ -1200,29 +1202,42 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
     }
 
     // ── Full TCP port scan on hostsToScan ─────────────────────────────────
+    // Worker pool: creates exactly portScanWorkers goroutines regardless of how
+    // many (ip, port) pairs there are.  The old semaphore+fan-out pattern
+    // created one goroutine per pair; in the fallback path that could be
+    // 65 534 hosts × 156 ports = ~10 M goroutines, crashing the process.
     type hit struct {
         ip   string
         port int
     }
     hits := make(chan hit, 4096)
-    sem := make(chan struct{}, portScanWorkers)
-    var wg sync.WaitGroup
 
-    for _, ip := range hostsToScan {
-        ipStr := ip.String()
-        for _, port := range tcpScanPorts {
-            wg.Add(1)
-            go func(ipStr string, port int) {
-                defer wg.Done()
-                sem <- struct{}{}
-                defer func() { <-sem }()
-                conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", ipStr, port), connTimeout)
+    type scanWork struct{ ip string; port int }
+    scanWorkCh := make(chan scanWork, portScanWorkers)
+    go func() {
+        for _, ip := range hostsToScan {
+            ipStr := ip.String()
+            for _, port := range tcpScanPorts {
+                scanWorkCh <- scanWork{ipStr, port}
+            }
+        }
+        close(scanWorkCh)
+    }()
+
+    var wg sync.WaitGroup
+    for i := 0; i < portScanWorkers; i++ {
+        wg.Add(1)
+        go func() {
+            defer wg.Done()
+            for w := range scanWorkCh {
+                conn, err := net.DialTimeout("tcp",
+                    fmt.Sprintf("%s:%d", w.ip, w.port), connTimeout)
                 if err == nil {
                     conn.Close()
-                    hits <- hit{ipStr, port}
+                    hits <- hit{w.ip, w.port}
                 }
-            }(ipStr, port)
-        }
+            }
+        }()
     }
     go func() { wg.Wait(); close(hits) }()
 
@@ -1306,30 +1321,38 @@ func discoverLiveHosts(ni netInfo, hosts []net.IP) map[string]bool {
         }
     }()
 
-    // Strategy 2: TCP RST probe on three universal ports
+    // Strategy 2: TCP RST probe on three universal ports.
+    // Worker pool instead of one-goroutine-per-host: len(hosts)×3 goroutines on
+    // a /16 would be ~197 000, which exhausts virtual memory on Windows.
     wg.Add(1)
     go func() {
         defer wg.Done()
-        sem := make(chan struct{}, portScanWorkers)
+        type discWork struct{ ip string; port int }
+        workCh := make(chan discWork, portScanWorkers)
+        go func() {
+            for _, ip := range hosts {
+                for _, port := range quickDiscoveryPorts {
+                    workCh <- discWork{ip.String(), port}
+                }
+            }
+            close(workCh)
+        }()
         var tcpWg sync.WaitGroup
-        for _, ip := range hosts {
-            for _, port := range quickDiscoveryPorts {
-                tcpWg.Add(1)
-                go func(ipStr string, port int) {
-                    defer tcpWg.Done()
-                    sem <- struct{}{}
-                    defer func() { <-sem }()
+        for i := 0; i < portScanWorkers; i++ {
+            tcpWg.Add(1)
+            go func() {
+                defer tcpWg.Done()
+                for w := range workCh {
                     conn, err := net.DialTimeout("tcp",
-                        fmt.Sprintf("%s:%d", ipStr, port), discoverConnTimeout)
+                        fmt.Sprintf("%s:%d", w.ip, w.port), discoverConnTimeout)
                     if err == nil {
                         conn.Close()
-                        liveCh <- ipStr
+                        liveCh <- w.ip
                     } else if isConnRefused(err) {
-                        // Connection refused means the host sent a TCP RST: it's alive.
-                        liveCh <- ipStr
+                        liveCh <- w.ip
                     }
-                }(ip.String(), port)
-            }
+                }
+            }()
         }
         tcpWg.Wait()
     }()
