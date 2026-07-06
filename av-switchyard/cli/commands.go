@@ -21,6 +21,9 @@ func (c *CLI) Run() error {
         case "scan":
             return c.Func_RunScan(c)
 
+        case "usb-scan", "usb_scan":
+            return c.Func_RunUSBScan(c)
+
         default:
             return fmt.Errorf("unknown command: %s\nSupported commands are: %s", c.Command, SupportedSubcommandNames)
     }

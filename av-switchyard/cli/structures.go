@@ -9,7 +9,7 @@ import (
 //    "github.com/jsimonetti/go-artnet/packet"
 )
 
-const SupportedSubcommandNames = "daemon, scan, version, upgrade"
+const SupportedSubcommandNames = "daemon, scan, usb-scan, version, upgrade"
 
 type CLI struct {
     Command     string `arg:"" optional:"" help:"subcommand to run, defaults to 'daemon'"`
@@ -30,5 +30,6 @@ type CLI struct {
     Func_RunDaemon  func(*CLI) error `kong:"-"`
     Func_RunUpgrade func(*CLI) error `kong:"-"`
     Func_RunScan    func(*CLI) error `kong:"-"`
+    Func_RunUSBScan func(*CLI) error `kong:"-"`
 }
 

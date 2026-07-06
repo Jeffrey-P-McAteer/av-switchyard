@@ -26,6 +26,7 @@ import (
     "av-switchyard/daemon"
     "av-switchyard/scan"
     "av-switchyard/upgrade"
+    "av-switchyard/usb_scan"
     "av-switchyard/version"
 )
 
@@ -46,6 +47,7 @@ func main() {
     c.Func_RunDaemon = daemon.RunDaemon
     c.Func_RunUpgrade = upgrade.RunUpgrade
     c.Func_RunScan = scan.RunScan
+    c.Func_RunUSBScan = usb_scan.RunUSBScan
 
     // Executes Run() in cli/commands.go
     ctx.FatalIfErrorf(ctx.Run())
