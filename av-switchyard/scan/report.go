@@ -25,18 +25,20 @@ func printScanPlan(ifaces []netInfo, opts ScanOptions) {
 		var est time.Duration
 		var strategy string
 
+		w := effectiveWorkers(opts.Workers, n)
+
 		if n <= discoverPhaseSmallMax {
 			// Full scan of all hosts.
-			tcpBatches := ceilDiv(n*len(tcpScanPorts), opts.Workers)
+			tcpBatches := ceilDiv(n*len(tcpScanPorts), w)
 			tcpTime := time.Duration(tcpBatches) * opts.PortTimeout
 			est = tcpTime
 			if udpDiscoveryTimeout > est {
 				est = udpDiscoveryTimeout
 			}
-			strategy = "full scan"
+			strategy = fmt.Sprintf("full scan (%d workers)", w)
 		} else {
 			// Two-phase: discovery then port-scan live hosts.
-			discBatches := ceilDiv(n*len(quickDiscoveryPorts), opts.Workers)
+			discBatches := ceilDiv(n*len(quickDiscoveryPorts), w)
 			discTime := time.Duration(discBatches) * opts.DiscoverTimeout
 			if opts.ArpWait > discTime {
 				discTime = opts.ArpWait
@@ -49,13 +51,13 @@ func printScanPlan(ifaces []netInfo, opts ScanOptions) {
 			if estLive > 500 {
 				estLive = 500
 			}
-			scanBatches := ceilDiv(estLive*len(tcpScanPorts), opts.Workers)
+			scanBatches := ceilDiv(estLive*len(tcpScanPorts), w)
 			scanTime := time.Duration(scanBatches) * opts.PortTimeout
 			if udpDiscoveryTimeout > scanTime {
 				scanTime = udpDiscoveryTimeout
 			}
 			est = discTime + scanTime + 2*time.Second
-			strategy = fmt.Sprintf("two-phase (ARP+TCP discover → ~%d live)", estLive)
+			strategy = fmt.Sprintf("two-phase → ~%d live (%d workers)", estLive, w)
 		}
 		est += 2 * time.Second // overhead
 

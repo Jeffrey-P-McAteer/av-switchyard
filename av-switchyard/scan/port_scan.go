@@ -51,37 +51,51 @@ type netInfo struct {
 // ---------------------------------------------------------------------------
 
 // ScanOptions holds user-configurable timing and concurrency values.
-// The defaults are calibrated so a /16 (65 534 hosts) completes in roughly
-// 90 seconds on a Windows host with the two-phase discovery strategy.
-// Users of smaller networks can increase the timeouts to catch slower devices.
 type ScanOptions struct {
 	// DiscoverTimeout is the per-connection timeout used in the fast host-
-	// discovery phase.  Short values (50–200 ms) keep large-subnet scans
-	// quick; longer values catch devices with delayed TCP stacks.
+	// discovery phase.  Longer values catch devices with slow TCP stacks.
 	DiscoverTimeout time.Duration
 
 	// PortTimeout is the per-connection timeout for the full 156-port TCP
-	// scan run only on hosts confirmed alive by discovery.  Increase to 1s–2s
-	// on small, quiet networks to avoid missing sleeping devices.
+	// scan run only on hosts confirmed alive by discovery.
 	PortTimeout time.Duration
 
 	// ArpWait is how long to wait after sending the ARP spray before reading
 	// the ARP cache.  Increase on slow or congested L2 segments.
 	ArpWait time.Duration
 
-	// Workers is the number of concurrent TCP goroutines.  Higher values
-	// saturate the network faster but consume more file descriptors.
+	// Workers overrides the auto-computed worker count when > 0.
+	// When 0, effectiveWorkers() auto-sizes to min(hostCount/4, 4098).
+	// CLI values > 4098 are honoured without capping.
 	Workers int
 }
 
-// DefaultScanOptions returns options calibrated for a fast /16 scan (~90 s on Windows).
+// DefaultScanOptions returns conservative defaults tuned for thoroughness on
+// typical AV networks.  Workers = 0 triggers auto-sizing (subnet/4, ≤ 4098).
 func DefaultScanOptions() ScanOptions {
 	return ScanOptions{
-		DiscoverTimeout: 100 * time.Millisecond,
-		PortTimeout:     300 * time.Millisecond,
+		DiscoverTimeout: 4 * time.Second,
+		PortTimeout:     2 * time.Second,
 		ArpWait:         1500 * time.Millisecond,
-		Workers:         1024,
+		Workers:         0, // auto: min(hostCount/4, 4098)
 	}
+}
+
+// effectiveWorkers returns the worker count to use for a given host set.
+//   - userWorkers > 0  → use exactly that (CLI override, no cap applied).
+//   - userWorkers == 0 → auto: floor(hostCount/4), capped at 4098.
+func effectiveWorkers(userWorkers, hostCount int) int {
+	if userWorkers > 0 {
+		return userWorkers
+	}
+	n := hostCount / 4
+	if n < 1 {
+		n = 1
+	}
+	if n > 4098 {
+		n = 4098
+	}
+	return n
 }
 
 // ---------------------------------------------------------------------------
@@ -248,10 +262,11 @@ func portScanSubnet(ni netInfo, opts ScanOptions) *SubnetScanReport {
 	}
 
 	// ── Full TCP port scan on hostsToScan ─────────────────────────────────
-	// Worker pool: creates exactly opts.Workers goroutines regardless of how
-	// many (ip, port) pairs there are.  The old semaphore+fan-out pattern
-	// created one goroutine per pair; in the fallback path that could be
-	// 65 534 hosts × 156 ports = ~10 M goroutines, crashing the process.
+	// Worker pool: a fixed number of goroutines pull (ip, port) pairs from a
+	// channel.  Worker count is auto-sized to the subnet (hosts/4, max 4098)
+	// unless the user supplied an explicit --workers value.
+	workers := effectiveWorkers(opts.Workers, len(hosts))
+
 	type hit struct {
 		ip   string
 		port int
@@ -262,7 +277,7 @@ func portScanSubnet(ni netInfo, opts ScanOptions) *SubnetScanReport {
 		ip   string
 		port int
 	}
-	scanWorkCh := make(chan scanWork, opts.Workers)
+	scanWorkCh := make(chan scanWork, workers)
 	go func() {
 		for _, ip := range hostsToScan {
 			ipStr := ip.String()
@@ -274,7 +289,7 @@ func portScanSubnet(ni netInfo, opts ScanOptions) *SubnetScanReport {
 	}()
 
 	var wg sync.WaitGroup
-	for i := 0; i < opts.Workers; i++ {
+	for i := 0; i < workers; i++ {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
@@ -381,11 +396,12 @@ func discoverLiveHosts(ni netInfo, hosts []net.IP, seedARP map[string]string, op
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		workers := effectiveWorkers(opts.Workers, len(hosts))
 		type discWork struct {
 			ip   string
 			port int
 		}
-		workCh := make(chan discWork, opts.Workers)
+		workCh := make(chan discWork, workers)
 		go func() {
 			for _, ip := range hosts {
 				for _, port := range quickDiscoveryPorts {
@@ -395,7 +411,7 @@ func discoverLiveHosts(ni netInfo, hosts []net.IP, seedARP map[string]string, op
 			close(workCh)
 		}()
 		var tcpWg sync.WaitGroup
-		for i := 0; i < opts.Workers; i++ {
+		for i := 0; i < workers; i++ {
 			tcpWg.Add(1)
 			go func() {
 				defer tcpWg.Done()

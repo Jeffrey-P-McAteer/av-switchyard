@@ -22,13 +22,13 @@ type CLI struct {
     // Flags used by all subcommands
     Verbose bool `help:"command: All. Enable verbose logging."`
 
-    // Scan tuning flags.  Defaults are calibrated so a /16 (65 534 hosts)
-    // completes in roughly 90 seconds on a Windows host.  Increase timeouts
-    // for smaller, quieter networks where devices may respond slowly.
-    ScanDiscoverTimeout time.Duration `name:"discover-timeout" help:"command: scan. Per-connection timeout for the host-discovery probe phase. Shorter = faster on large subnets; longer = catches slower devices." default:"100ms"`
-    ScanPortTimeout     time.Duration `name:"port-timeout"     help:"command: scan. Per-connection timeout for the full TCP port scan. Increase (e.g. 1s or 2s) for slow or sleepy devices on small networks." default:"300ms"`
+    // Scan tuning flags.  Defaults are conservative: thorough timeouts for
+    // typical AV networks.  Use shorter values when scanning large (e.g. /16)
+    // networks where speed matters more than catching the slowest devices.
+    ScanDiscoverTimeout time.Duration `name:"discover-timeout" help:"command: scan. Per-connection timeout for the host-discovery probe phase (e.g. 100ms for speed, 4s for thoroughness)." default:"4s"`
+    ScanPortTimeout     time.Duration `name:"port-timeout"     help:"command: scan. Per-connection timeout for the full TCP port scan (e.g. 300ms for speed, 2s for slow/sleepy devices)." default:"2s"`
     ScanArpWait         time.Duration `name:"arp-wait"         help:"command: scan. How long to wait for ARP replies after the ARP spray before reading the ARP cache." default:"1500ms"`
-    ScanWorkers         int           `name:"workers"          help:"command: scan. Number of concurrent TCP worker goroutines." default:"1024"`
+    ScanWorkers         int           `name:"workers"          help:"command: scan. Concurrent TCP goroutines. 0 = auto (subnet hosts/4, max 4098). Explicit values above 4098 are honoured." default:"0"`
 
     // Injected by main, to allow cli -> daemon calls without violating Go's strict DAG compilation design.
     Func_RunDaemon  func(*CLI) error `kong:"-"`

@@ -45,20 +45,15 @@ func RunScan(c *cli.CLI) error {
 		noOSReport = false
 	)
 
-	// Build scan options from CLI flags, falling back to defaults for any
-	// zero values (e.g. if the flag was not supplied).
-	opts := DefaultScanOptions()
-	if c.ScanDiscoverTimeout > 0 {
-		opts.DiscoverTimeout = c.ScanDiscoverTimeout
-	}
-	if c.ScanPortTimeout > 0 {
-		opts.PortTimeout = c.ScanPortTimeout
-	}
-	if c.ScanArpWait > 0 {
-		opts.ArpWait = c.ScanArpWait
-	}
-	if c.ScanWorkers > 0 {
-		opts.Workers = c.ScanWorkers
+	// Build scan options directly from CLI flags.  Kong has already applied
+	// defaults (4s discover, 2s port, 1500ms ARP wait, 0 = auto workers),
+	// so we just adopt the parsed values unconditionally.  Workers = 0 means
+	// "auto-size to subnet/4 (max 4098)", handled by effectiveWorkers().
+	opts := ScanOptions{
+		DiscoverTimeout: c.ScanDiscoverTimeout,
+		PortTimeout:     c.ScanPortTimeout,
+		ArpWait:         c.ScanArpWait,
+		Workers:         c.ScanWorkers,
 	}
 
 	var (
