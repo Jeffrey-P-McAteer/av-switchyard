@@ -14,7 +14,7 @@ import traceback
 import time
 
 testbed_folder = os.path.dirname(os.path.realpath(__file__))
-vm_data_folder = os.path.join(testbed_folder, 'vm-data')
+vm_data_folder = os.path.join(testbed_folder, 'vm-data-MA3')
 
 test_vm_disk_image = os.path.join(vm_data_folder, 'vm-test-artifact-disk.img')
 mount_dir = sys.argv[1]
