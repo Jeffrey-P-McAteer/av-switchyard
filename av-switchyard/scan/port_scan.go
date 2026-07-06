@@ -82,20 +82,43 @@ func DefaultScanOptions() ScanOptions {
 }
 
 // effectiveWorkers returns the worker count to use for a given host set.
-//   - userWorkers > 0  → use exactly that (CLI override, no cap applied).
-//   - userWorkers == 0 → auto: floor(hostCount/4), capped at 4098.
-func effectiveWorkers(userWorkers, hostCount int) int {
+//
+//   - userWorkers > 0  → returned as-is; CLI values above 4098 are honoured.
+//   - userWorkers == 0 → auto: start at floor(hostCount/4), then double until
+//     the worst-case full-port-scan estimate fits within 5 minutes, capped at
+//     4098.  The estimate is ceil(hosts×ports/workers) × portTimeout.
+func effectiveWorkers(userWorkers, hostCount int, portTimeout time.Duration) int {
 	if userWorkers > 0 {
 		return userWorkers
 	}
-	n := hostCount / 4
-	if n < 1 {
-		n = 1
+
+	w := hostCount / 4
+	if w < 1 {
+		w = 1
 	}
-	if n > 4098 {
-		n = 4098
+
+	// Double w until the estimated full-scan time is ≤ 5 minutes, or the
+	// 4098-worker auto cap is reached.
+	const targetMs = 5 * 60 * 1000 // 300 000 ms
+	ptMs := int(portTimeout.Milliseconds())
+	if ptMs < 1 {
+		ptMs = 1
 	}
-	return n
+	portCount := len(tcpScanPorts)
+	if portCount == 0 {
+		portCount = 156 // fallback before init() runs
+	}
+	for w < 4098 {
+		batches := (hostCount*portCount + w - 1) / w
+		if batches*ptMs <= targetMs {
+			break
+		}
+		w *= 2
+	}
+	if w > 4098 {
+		w = 4098
+	}
+	return w
 }
 
 // ---------------------------------------------------------------------------
@@ -265,7 +288,7 @@ func portScanSubnet(ni netInfo, opts ScanOptions) *SubnetScanReport {
 	// Worker pool: a fixed number of goroutines pull (ip, port) pairs from a
 	// channel.  Worker count is auto-sized to the subnet (hosts/4, max 4098)
 	// unless the user supplied an explicit --workers value.
-	workers := effectiveWorkers(opts.Workers, len(hosts))
+	workers := effectiveWorkers(opts.Workers, len(hosts), opts.PortTimeout)
 
 	type hit struct {
 		ip   string
@@ -396,7 +419,7 @@ func discoverLiveHosts(ni netInfo, hosts []net.IP, seedARP map[string]string, op
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		workers := effectiveWorkers(opts.Workers, len(hosts))
+		workers := effectiveWorkers(opts.Workers, len(hosts), opts.PortTimeout)
 		type discWork struct {
 			ip   string
 			port int

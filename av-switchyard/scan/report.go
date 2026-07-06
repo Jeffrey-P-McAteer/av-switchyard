@@ -25,7 +25,7 @@ func printScanPlan(ifaces []netInfo, opts ScanOptions) {
 		var est time.Duration
 		var strategy string
 
-		w := effectiveWorkers(opts.Workers, n)
+		w := effectiveWorkers(opts.Workers, n, opts.PortTimeout)
 
 		if n <= discoverPhaseSmallMax {
 			// Full scan of all hosts.
