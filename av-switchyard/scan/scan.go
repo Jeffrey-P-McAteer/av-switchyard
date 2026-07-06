@@ -64,6 +64,19 @@ func RunScan(c *cli.CLI) error {
         os.Exit(1)
     }
 
+    // ── Print OS NIC report + scan plan immediately, before blocking on scans ─
+    // This gives the operator instant feedback and an expected wait time.
+    if !asJSON {
+        if !noOSReport {
+            printOSReport(osReports, winErr)
+        }
+        if len(ifaces) == 0 {
+            fmt.Fprintln(os.Stderr, "no eligible IPv4 network interfaces found for scanning")
+            os.Exit(1)
+        }
+        printScanPlan(ifaces)
+    }
+
     var (
         wg              sync.WaitGroup
         mu              sync.Mutex
@@ -110,13 +123,6 @@ func RunScan(c *cli.CLI) error {
         return nil
     }
 
-    if !noOSReport {
-        printOSReport(osReports, winErr)
-    }
-    if len(ifaces) == 0 {
-        fmt.Fprintln(os.Stderr, "no eligible IPv4 network interfaces found for Art-Net scanning")
-        os.Exit(1)
-    }
     printTextReport(artnetReports)
     printPortScanReport(portScanReports)
 
@@ -1103,10 +1109,19 @@ func printTextReport(reports []*InterfaceReport) {
 // ---------------------------------------------------------------------------
 
 const (
-    portScanWorkers    = 1024           // max concurrent TCP dial goroutines
-    portScanConnTimeout = 300 * time.Millisecond
-    portScanMaxHosts   = 2048           // guard against accidentally scanning huge subnets
+    portScanWorkers     = 1024                       // max concurrent TCP dial goroutines
+    portScanConnTimeout = 300 * time.Millisecond     // per-connection timeout for full port scan
+    maxScanHosts        = 65534                      // hard cap: never enumerate more than a /16
+
+    // Host-discovery phase constants (runs before full port scan on large subnets).
+    discoverPhaseSmallMax = 256                      // subnets ≤ this host count: skip discovery, scan all
+    discoverConnTimeout   = 100 * time.Millisecond  // shorter timeout for discovery probes
+    arpSprayWait         = 1500 * time.Millisecond  // time to wait for ARP responses after spray
 )
+
+// quickDiscoveryPorts are probed in the host-discovery phase.  Three ports that
+// cover the vast majority of AV devices with any TCP service at all.
+var quickDiscoveryPorts = []int{22, 80, 443}
 
 // subnetHosts returns all usable host IPs in ni's subnet, excluding our own
 // address, the network address, and the broadcast address.
@@ -1135,9 +1150,13 @@ func subnetHosts(ni netInfo) []net.IP {
     return hosts
 }
 
-// portScanSubnet probes every host in ni's subnet via TCP connect on all
-// ports listed in avServicePorts.  It returns a SubnetScanReport with the
-// live hosts and their open ports.
+// portScanSubnet probes hosts in ni's subnet and returns a SubnetScanReport.
+//
+// Strategy (selected by subnet size):
+//   ≤ discoverPhaseSmallMax hosts  — full scan every host (current LAN behaviour)
+//   > discoverPhaseSmallMax hosts  — two-phase: discover live hosts first via
+//                                    ARP spray + TCP RST probe, then full-scan
+//                                    only the confirmed-live set.
 func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
     r := &SubnetScanReport{
         Interface: ni.Name,
@@ -1149,25 +1168,47 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
         r.Note = "no scannable hosts in subnet (prefix too small)"
         return r
     }
-    if len(hosts) > portScanMaxHosts {
-        r.Note = fmt.Sprintf("subnet has %d hosts; scanning first %d only", len(hosts), portScanMaxHosts)
-        hosts = hosts[:portScanMaxHosts]
+    if len(hosts) > maxScanHosts {
+        r.Note = fmt.Sprintf("subnet has %s hosts; scanning first %s",
+            commaUint64(uint64(len(hosts))), commaUint64(uint64(maxScanHosts)))
+        hosts = hosts[:maxScanHosts]
     }
 
+    // UDP discovery (mDNS/SSDP/SNMP/NTP) runs the whole time in the background.
+    udpDone := make(chan map[string][]OpenPort, 1)
+    go func() { udpDone <- udpDiscoverSubnet(ni) }()
+
+    // ── Host-discovery phase (skipped for small subnets) ──────────────────
+    hostsToScan := hosts
+    if len(hosts) > discoverPhaseSmallMax {
+        live := discoverLiveHosts(ni, hosts)
+        if len(live) > 0 {
+            var filtered []net.IP
+            for _, ip := range hosts {
+                if live[ip.String()] {
+                    filtered = append(filtered, ip)
+                }
+            }
+            if len(filtered) > 0 {
+                hostsToScan = filtered
+            }
+        }
+        if len(hostsToScan) == len(hosts) {
+            // Discovery found nothing (heavily filtered network?); note the fallback.
+            r.Note = appendNote(r.Note, "host discovery found no live hosts; falling back to full scan")
+        }
+    }
+
+    // ── Full TCP port scan on hostsToScan ─────────────────────────────────
     type hit struct {
         ip   string
         port int
     }
-
-    // Launch UDP discovery in parallel with the TCP scan.
-    udpDone := make(chan map[string][]OpenPort, 1)
-    go func() { udpDone <- udpDiscoverSubnet(ni) }()
-
     hits := make(chan hit, 4096)
     sem := make(chan struct{}, portScanWorkers)
     var wg sync.WaitGroup
 
-    for _, ip := range hosts {
+    for _, ip := range hostsToScan {
         ipStr := ip.String()
         for _, port := range tcpScanPorts {
             wg.Add(1)
@@ -1183,11 +1224,7 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
             }(ipStr, port)
         }
     }
-
-    go func() {
-        wg.Wait()
-        close(hits)
-    }()
+    go func() { wg.Wait(); close(hits) }()
 
     tcpHostMap := make(map[string][]OpenPort)
     for h := range hits {
@@ -1197,10 +1234,9 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
         })
     }
 
-    // Wait for UDP discovery to finish, then merge with TCP results.
+    // ── Merge TCP + UDP results ───────────────────────────────────────────
     udpMap := <-udpDone
 
-    // Build per-IP port list combining both sources.
     allIPs := make(map[string]struct{})
     for ip := range tcpHostMap {
         allIPs[ip] = struct{}{}
@@ -1209,9 +1245,7 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
         allIPs[ip] = struct{}{}
     }
 
-    // Resolve MACs from the OS ARP cache (populated as a side-effect of TCP connects).
     arpTable := readARPTable()
-
     for ip := range allIPs {
         var ports []OpenPort
         ports = append(ports, tcpHostMap[ip]...)
@@ -1223,12 +1257,116 @@ func portScanSubnet(ni netInfo, connTimeout time.Duration) *SubnetScanReport {
             OpenPorts: ports,
         })
     }
-
     sort.Slice(r.Hosts, func(i, j int) bool {
         return ipToUint32(net.ParseIP(r.Hosts[i].IP)) < ipToUint32(net.ParseIP(r.Hosts[j].IP))
     })
-
     return r
+}
+
+// appendNote appends a sentence to an existing note, separated by "; ".
+func appendNote(existing, note string) string {
+    if existing == "" {
+        return note
+    }
+    return existing + "; " + note
+}
+
+// discoverLiveHosts uses two parallel strategies to identify which hosts in
+// the subnet are actually online, before committing to a full port scan:
+//
+//  1. ARP spray — sends a harmless UDP packet to every host, causing the OS to
+//     send ARP requests.  Hosts that reply to ARP populate the OS ARP cache,
+//     which is read after a short wait.  Covers all layer-2-reachable hosts,
+//     including UDP-only AV devices that would never appear in a TCP scan.
+//
+//  2. TCP RST probe — dials a small set of common ports with a short timeout.
+//     A successful connect OR a "connection refused" (RST) proves the host is
+//     alive even when no port is open.  Covers hosts across routed L3 segments
+//     that are unreachable via ARP.
+//
+// Both strategies run concurrently; results are unioned into the returned map.
+func discoverLiveHosts(ni netInfo, hosts []net.IP) map[string]bool {
+    liveCh := make(chan string, 512)
+    var wg sync.WaitGroup
+
+    // Strategy 1: ARP spray + cache read (parallel with TCP probe)
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        // Seed from whatever is already in the ARP cache.
+        for ip := range readARPTable() {
+            liveCh <- ip
+        }
+        // Send a harmless UDP packet to every host to trigger ARP resolution.
+        arpSpray(ni, hosts)
+        time.Sleep(arpSprayWait)
+        // Re-read the ARP cache; new entries are hosts that replied to ARP.
+        for ip := range readARPTable() {
+            liveCh <- ip
+        }
+    }()
+
+    // Strategy 2: TCP RST probe on three universal ports
+    wg.Add(1)
+    go func() {
+        defer wg.Done()
+        sem := make(chan struct{}, portScanWorkers)
+        var tcpWg sync.WaitGroup
+        for _, ip := range hosts {
+            for _, port := range quickDiscoveryPorts {
+                tcpWg.Add(1)
+                go func(ipStr string, port int) {
+                    defer tcpWg.Done()
+                    sem <- struct{}{}
+                    defer func() { <-sem }()
+                    conn, err := net.DialTimeout("tcp",
+                        fmt.Sprintf("%s:%d", ipStr, port), discoverConnTimeout)
+                    if err == nil {
+                        conn.Close()
+                        liveCh <- ipStr
+                    } else if isConnRefused(err) {
+                        // Connection refused means the host sent a TCP RST: it's alive.
+                        liveCh <- ipStr
+                    }
+                }(ip.String(), port)
+            }
+        }
+        tcpWg.Wait()
+    }()
+
+    go func() { wg.Wait(); close(liveCh) }()
+
+    live := make(map[string]bool)
+    for ipStr := range liveCh {
+        if ip := net.ParseIP(ipStr); ip != nil && ni.IPNet.Contains(ip) {
+            live[ipStr] = true
+        }
+    }
+    return live
+}
+
+// arpSpray sends a single harmless UDP packet (port 9 / discard) to every
+// host in the list.  The OS must resolve each destination's MAC via ARP before
+// transmitting; hosts that respond populate the OS ARP cache without any
+// application-layer handshake or state change on the target.
+func arpSpray(ni netInfo, hosts []net.IP) {
+    conn, err := net.ListenUDP("udp4", &net.UDPAddr{IP: ni.IP, Port: 0})
+    if err != nil {
+        return
+    }
+    defer conn.Close()
+    conn.SetWriteDeadline(time.Now().Add(5 * time.Second))
+    payload := []byte{0}
+    for _, ip := range hosts {
+        _, _ = conn.WriteToUDP(payload, &net.UDPAddr{IP: ip, Port: 9})
+    }
+}
+
+// isConnRefused returns true when err represents a TCP connection-refused
+// response (RST from the remote), which proves the host is alive even though
+// the specific port is closed.
+func isConnRefused(err error) bool {
+    return err != nil && strings.Contains(err.Error(), "connection refused")
 }
 
 // resolvePortScanHostnames performs best-effort reverse DNS on scanned hosts.
@@ -1309,6 +1447,97 @@ func readARPTable() map[string]string {
         }
     }
     return result
+}
+
+// printScanPlan prints the per-interface strategy and estimated duration
+// before scans start, so the operator knows what to expect on large networks.
+func printScanPlan(ifaces []netInfo) {
+    fmt.Println("Scan Strategy & Estimated Duration")
+    fmt.Println(strings.Repeat("=", 72))
+
+    var maxEst time.Duration
+    for _, ni := range ifaces {
+        hosts := subnetHosts(ni)
+        n := len(hosts)
+        if n > maxScanHosts {
+            n = maxScanHosts
+        }
+
+        var est time.Duration
+        var strategy string
+
+        if n <= discoverPhaseSmallMax {
+            // Full scan of all hosts.
+            tcpBatches := ceilDiv(n*len(tcpScanPorts), portScanWorkers)
+            tcpTime := time.Duration(tcpBatches) * portScanConnTimeout
+            est = tcpTime
+            if udpDiscoveryTimeout > est {
+                est = udpDiscoveryTimeout
+            }
+            strategy = "full scan"
+        } else {
+            // Two-phase: discovery then port-scan live hosts.
+            discBatches := ceilDiv(n*len(quickDiscoveryPorts), portScanWorkers)
+            discTime := time.Duration(discBatches) * discoverConnTimeout
+            if arpSprayWait > discTime {
+                discTime = arpSprayWait
+            }
+            // Assume ~5 % live hosts (conservative for AV networks).
+            estLive := n / 20
+            if estLive < 5 {
+                estLive = 5
+            }
+            if estLive > 500 {
+                estLive = 500
+            }
+            scanBatches := ceilDiv(estLive*len(tcpScanPorts), portScanWorkers)
+            scanTime := time.Duration(scanBatches) * portScanConnTimeout
+            if udpDiscoveryTimeout > scanTime {
+                scanTime = udpDiscoveryTimeout
+            }
+            est = discTime + scanTime + 2*time.Second
+            strategy = fmt.Sprintf("two-phase (ARP+TCP discover → ~%d live)", estLive)
+        }
+        est += 2 * time.Second // overhead
+
+        fmt.Printf("  %-22s  %-26s  %8s hosts  %-38s  ~%s\n",
+            ni.Name,
+            ni.IPNet.String(),
+            commaUint64(uint64(n)),
+            strategy,
+            roundDuration(est))
+
+        if est > maxEst {
+            maxEst = est
+        }
+    }
+
+    if len(ifaces) > 1 {
+        fmt.Printf("\n  Total (interfaces run in parallel): ~%s\n", roundDuration(maxEst))
+    }
+    fmt.Println()
+}
+
+// ceilDiv returns ⌈a/b⌉ using integer arithmetic.
+func ceilDiv(a, b int) int {
+    if b == 0 {
+        return 0
+    }
+    return (a + b - 1) / b
+}
+
+// roundDuration formats d as a human-friendly string.
+func roundDuration(d time.Duration) string {
+    switch {
+    case d < 30*time.Second:
+        return fmt.Sprintf("%ds", int(d.Seconds()+0.5))
+    case d < time.Minute:
+        return fmt.Sprintf("%ds", int(d.Seconds()))
+    case d < 10*time.Minute:
+        return fmt.Sprintf("%.1f min", d.Minutes())
+    default:
+        return fmt.Sprintf("%.0f min", d.Minutes())
+    }
 }
 
 func printPortScanReport(reports []*SubnetScanReport) {
