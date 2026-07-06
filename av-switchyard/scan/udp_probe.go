@@ -27,6 +27,18 @@ import (
 const udpDiscoveryTimeout = 5 * time.Second
 const udpPerHostTimeout = 400 * time.Millisecond
 
+// udpProbeWorkers is the fixed worker-pool size for per-host UDP probes
+// (SNMP, NTP).  A bounded pool prevents goroutine explosion on large subnets:
+// the old semaphore+fan-out pattern created one goroutine per host (65 534 on
+// a /16), exhausting virtual memory on Windows before any probes ran.
+const udpProbeWorkers = 64
+
+// udpPerHostMaxHosts caps how many hosts SNMP and NTP probe on any one subnet.
+// At udpProbeWorkers concurrency and udpPerHostTimeout per host the upper
+// bound on probe time is: (udpPerHostMaxHosts/udpProbeWorkers)*udpPerHostTimeout
+// = (2048/64)*400ms ≈ 13 s.
+const udpPerHostMaxHosts = 2048
+
 // udpProbeResult is a single UDP-discovered service on a host.
 type udpProbeResult struct {
 	IP      string
@@ -35,9 +47,11 @@ type udpProbeResult struct {
 }
 
 // udpDiscoverSubnet runs all UDP discovery probes concurrently on ni's network.
+// hosts is the already-capped host list from portScanSubnet; passing it here
+// avoids probeSNMP/probeNTP independently re-enumerating the full subnet.
 // It returns a map from IPv4 address → discovered UDP services (as OpenPort values).
 // Only addresses within ni's subnet are returned.
-func udpDiscoverSubnet(ni netInfo) map[string][]OpenPort {
+func udpDiscoverSubnet(ni netInfo, hosts []net.IP) map[string][]OpenPort {
 	ch := make(chan udpProbeResult, 1024)
 	var wg sync.WaitGroup
 
@@ -48,10 +62,10 @@ func udpDiscoverSubnet(ni netInfo) map[string][]OpenPort {
 	go func() { defer wg.Done(); probeSSDP(ni, udpDiscoveryTimeout, ch) }()
 
 	wg.Add(1)
-	go func() { defer wg.Done(); probeSNMP(ni, udpPerHostTimeout, ch) }()
+	go func() { defer wg.Done(); probeSNMP(hosts, udpPerHostTimeout, ch) }()
 
 	wg.Add(1)
-	go func() { defer wg.Done(); probeNTP(ni, udpPerHostTimeout, ch) }()
+	go func() { defer wg.Done(); probeNTP(hosts, ni.IP.String(), udpPerHostTimeout, ch) }()
 
 	go func() { wg.Wait(); close(ch) }()
 
@@ -252,57 +266,70 @@ func ipv4FromURL(rawURL string) string {
 // SNMP  (RFC 3411-3418)
 // ---------------------------------------------------------------------------
 
-// probeSNMP sends SNMPv2c GET sysDescr.0 (community "public") to every host
-// in ni's subnet and emits a result for each host that responds.
+// probeSNMP sends SNMPv2c GET sysDescr.0 (community "public") to each host in
+// the provided list and emits a result for each that responds.
 // Only the read-only GET operation is used — no SET is ever sent.
-func probeSNMP(ni netInfo, timeout time.Duration, out chan<- udpProbeResult) {
-	hosts := subnetHosts(ni)
+//
+// A fixed worker pool (udpProbeWorkers goroutines) processes the host list.
+// This replaces the old one-goroutine-per-host pattern that created up to
+// 65 534 goroutines on a /16, exhausting virtual memory on Windows.
+func probeSNMP(hosts []net.IP, timeout time.Duration, out chan<- udpProbeResult) {
 	if len(hosts) == 0 {
 		return
 	}
+	// Cap to keep probe time bounded on large subnets.
+	if len(hosts) > udpPerHostMaxHosts {
+		hosts = hosts[:udpPerHostMaxHosts]
+	}
 
-	sem := make(chan struct{}, 64)
+	ipCh := make(chan net.IP, udpProbeWorkers)
+	go func() {
+		for _, ip := range hosts {
+			ipCh <- ip
+		}
+		close(ipCh)
+	}()
+
 	var wg sync.WaitGroup
-
-	for _, ip := range hosts {
+	for i := 0; i < udpProbeWorkers; i++ {
 		wg.Add(1)
-		go func(ip net.IP) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			g := &gosnmp.GoSNMP{
-				Target:    ip.String(),
-				Port:      161,
-				Community: "public",
-				Version:   gosnmp.Version2c,
-				Timeout:   timeout,
-				Retries:   0,
-			}
-			if err := g.Connect(); err != nil {
-				return
-			}
-			defer g.Conn.Close()
-
-			result, err := g.Get([]string{"1.3.6.1.2.1.1.1.0"}) // sysDescr.0
-			if err != nil {
-				return
-			}
-			for _, v := range result.Variables {
-				if v.Type == gosnmp.OctetString {
-					desc := strings.TrimSpace(string(v.Value.([]byte)))
-					// Collapse internal whitespace and truncate.
-					desc = strings.Join(strings.Fields(desc), " ")
-					if len(desc) > 64 {
-						desc = desc[:61] + "..."
+			for ip := range ipCh {
+				// Use a closure so we can return early without exiting the worker.
+				func() {
+					g := &gosnmp.GoSNMP{
+						Target:    ip.String(),
+						Port:      161,
+						Community: "public",
+						Version:   gosnmp.Version2c,
+						Timeout:   timeout,
+						Retries:   0,
 					}
-					out <- udpProbeResult{ip.String(), 161, "SNMP (" + desc + ")"}
-					return
-				}
+					if err := g.Connect(); err != nil {
+						return
+					}
+					result, err := g.Get([]string{"1.3.6.1.2.1.1.1.0"}) // sysDescr.0
+					g.Conn.Close()
+					if err != nil {
+						return
+					}
+					for _, v := range result.Variables {
+						if v.Type == gosnmp.OctetString {
+							desc := strings.TrimSpace(string(v.Value.([]byte)))
+							desc = strings.Join(strings.Fields(desc), " ")
+							if len(desc) > 64 {
+								desc = desc[:61] + "..."
+							}
+							out <- udpProbeResult{ip.String(), 161, "SNMP (" + desc + ")"}
+							return
+						}
+					}
+					// Responded but sysDescr was not an octet string.
+					out <- udpProbeResult{ip.String(), 161, "SNMP"}
+				}()
 			}
-			// Responded but sysDescr was not an octet string — still mark as SNMP.
-			out <- udpProbeResult{ip.String(), 161, "SNMP"}
-		}(ip)
+		}()
 	}
 	wg.Wait()
 }
@@ -311,37 +338,47 @@ func probeSNMP(ni netInfo, timeout time.Duration, out chan<- udpProbeResult) {
 // NTP  (RFC 5905)
 // ---------------------------------------------------------------------------
 
-// probeNTP sends an NTP client request to every host in ni's subnet and emits
-// a result for each host that responds as a valid NTP server.
-// The local bind address is set to ni.IP so traffic stays on the right interface.
-func probeNTP(ni netInfo, timeout time.Duration, out chan<- udpProbeResult) {
-	hosts := subnetHosts(ni)
+// probeNTP sends an NTP client request to each host in the provided list and
+// emits a result for each that responds as a valid NTP server.
+// localAddr is bound as the source address so traffic stays on the right
+// interface (pass ni.IP.String()).
+//
+// Uses a fixed worker pool for the same reason as probeSNMP.
+func probeNTP(hosts []net.IP, localAddr string, timeout time.Duration, out chan<- udpProbeResult) {
 	if len(hosts) == 0 {
 		return
 	}
+	if len(hosts) > udpPerHostMaxHosts {
+		hosts = hosts[:udpPerHostMaxHosts]
+	}
 
-	sem := make(chan struct{}, 64)
+	ipCh := make(chan net.IP, udpProbeWorkers)
+	go func() {
+		for _, ip := range hosts {
+			ipCh <- ip
+		}
+		close(ipCh)
+	}()
+
 	var wg sync.WaitGroup
-
-	for _, ip := range hosts {
+	for i := 0; i < udpProbeWorkers; i++ {
 		wg.Add(1)
-		go func(ip net.IP) {
+		go func() {
 			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			resp, err := ntp.QueryWithOptions(ip.String(), ntp.QueryOptions{
-				Timeout:      timeout,
-				LocalAddress: ni.IP.String(),
-			})
-			if err != nil {
-				return
+			for ip := range ipCh {
+				resp, err := ntp.QueryWithOptions(ip.String(), ntp.QueryOptions{
+					Timeout:      timeout,
+					LocalAddress: localAddr,
+				})
+				if err != nil {
+					continue
+				}
+				out <- udpProbeResult{
+					ip.String(), 123,
+					fmt.Sprintf("NTP stratum-%d (v%d)", resp.Stratum, resp.Version),
+				}
 			}
-			out <- udpProbeResult{
-				ip.String(), 123,
-				fmt.Sprintf("NTP stratum-%d (v%d)", resp.Stratum, resp.Version),
-			}
-		}(ip)
+		}()
 	}
 	wg.Wait()
 }
